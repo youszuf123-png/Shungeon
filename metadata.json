@@ -1,0 +1,6 @@
+{
+  "name": "Bastera: Endless Citadel",
+  "description": "A candle-lit pixel-art multiplayer dungeon escape through an abandoned royal castle, enchanted forest ruins, and volcano hell with 120 JoJo-inspired bosses, 108 hidden passages, systematic sword styles, and sarcastic wit.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
