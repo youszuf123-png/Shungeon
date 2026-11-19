@@ -2,9 +2,13 @@ import { WEAPONS } from './data';
 import {
   drawBossPortrait,
   getBakedBiomeWall,
+  getBakedFloorStrip,
   getBakedJoJoBossSprite,
+  getBakedStarPlatinumSprite,
   getBakedWarriorBattleSprite,
+  shadeColor,
 } from './pixelArtAtlas';
+import { DEFAULT_WARRIOR_CUSTOMIZATION } from './rules';
 import type {
   ActiveBoss,
   BiomeId,
@@ -14,10 +18,12 @@ import type {
   EnemyState,
   HiddenPassage,
   InteractableProp,
+  MegaCutsceneHud,
   MultiplayerPeer,
   Platform,
   PlayerState,
   Projectile,
+  WarriorCustomization,
   WeaponId,
 } from './types';
 import { FLOOR_Y } from './worldGen';
@@ -115,17 +121,24 @@ export function drawBiomeBackdrop(
       ctx.fillStyle = `rgba(110, 231, 183, ${pulse})`;
       ctx.fillRect(Math.round(wx + 114), 132, 8, 24);
     } else {
-      // Flowing molten magma shimmer + swaying iron torture cage
-      const shimmer = 0.3 + 0.35 * Math.sin(time * 6 + i);
+      // Animated volcanic caldera shimmer + dual bubbling magma falls + rising caldera sparks + cage
+      const shimmer = 0.35 + 0.4 * Math.sin(time * 6.5 + i);
       ctx.fillStyle = `rgba(254, 240, 138, ${shimmer})`;
-      ctx.fillRect(Math.round(wx + 123), 72 + Math.round((time * 32) % 36), 6, 14);
+      ctx.fillRect(Math.round(wx + 118), 66 + Math.round((time * 42) % 44), 14, 16);
+      ctx.fillStyle = `rgba(249, 115, 22, ${shimmer * 0.85})`;
+      ctx.fillRect(Math.round(wx + 115), 110 + Math.round((time * 54) % 64), 20, 18);
+      // Crater heat mirage haze along horizon
+      const craterGlow = 0.14 + 0.1 * Math.sin(time * 3.5 + i);
+      ctx.fillStyle = `rgba(239, 68, 68, ${craterGlow})`;
+      ctx.fillRect(Math.round(wx), 40, stripW, 38);
       const cSway = Math.round(Math.sin(time * 2.1 + i) * 1);
       for (let cy = 10; cy < 82; cy += 9) {
-        pRect(ctx, wx + 208 + cSway, cy, 3, 5, '#57534e');
+        pRect(ctx, wx + 208 + cSway, cy, 3, 5, '#64748b');
       }
       pRect(ctx, wx + 201 + cSway, 82, 16, 22, '#291515');
       pRect(ctx, wx + 204 + cSway, 85, 4, 16, '#120505');
       pRect(ctx, wx + 210 + cSway, 85, 4, 16, '#120505');
+      pRect(ctx, wx + 207 + cSway, 90, 4, 6, '#fb923c');
     }
   }
 }
@@ -142,71 +155,26 @@ export function drawPlatforms(
     if (sx + plat.w < -16 || sx > PIXEL_W + 16) continue;
 
     if (plat.kind === 'floor') {
-      if (biome === 'castle') {
-        // 2.5D Castlevania flagstone walkway top ledge + multi-course ashlar masonry below
-        pRect(ctx, sx, plat.y, plat.w, plat.h, '#140e12');
-        pRect(ctx, sx, plat.y - 2, plat.w, 6, '#362730');
-        for (let bx = 0; bx < plat.w; bx += 24) {
-          const tileIdx = Math.floor((bx + plat.x) / 24);
-          const broken = tileIdx % 5 === 0;
-          const mossy = tileIdx % 7 === 0;
-          // 2.5D top flagstone bevel with diagonal mortar perspective seam
-          pRect(ctx, sx + bx, plat.y - 2, 22, 4, broken ? '#2a1e24' : '#4a3742');
-          pRect(ctx, sx + bx, plat.y - 2, 22, 1, '#6b5361');
-          pRect(ctx, sx + bx + 22, plat.y - 2, 2, 5, '#0b0709');
-          // Course 1 & 2 irregular stone blocks under ledge
-          pRect(ctx, sx + bx, plat.y + 6, 22, 10, broken ? '#1b1318' : '#32242c');
-          pRect(ctx, sx + bx, plat.y + 6, 22, 2, '#4d3944');
-          pRect(ctx, sx + bx + 8, plat.y + 18, 22, 10, '#271c22');
-          pRect(ctx, sx + bx + 8, plat.y + 18, 22, 1, '#3d2d36');
-          pRect(ctx, sx + bx, plat.y + 30, 22, 12, '#1b1317');
-          if (broken) {
-            pRect(ctx, sx + bx + 6, plat.y + 8, 2, 7, '#090609');
-            pRect(ctx, sx + bx + 8, plat.y + 11, 5, 2, '#090609');
-          }
-          if (mossy) {
-            pRect(ctx, sx + bx + 2, plat.y + 4, 7, 2, '#166534');
-            pRect(ctx, sx + bx + 4, plat.y + 6, 3, 2, '#22c55e');
-          }
-        }
-        // Iconic Red & Golden Royal Carpet with diamond heraldic weave, tassels & tattered brick breaks
-        pRect(ctx, sx, plat.y - 1, plat.w, 6, '#5c1118');
-        pRect(ctx, sx, plat.y, plat.w, 4, '#be123c');
-        pRect(ctx, sx, plat.y - 1, plat.w, 1, '#fbbf24');
-        pRect(ctx, sx, plat.y + 4, plat.w, 1, '#b45309');
-        for (let gx = 4; gx < plat.w; gx += 16) {
-          if ((gx + plat.x) % 112 !== 0) {
-            pRect(ctx, sx + gx, plat.y + 1, 5, 2, '#fde047');
-            pRect(ctx, sx + gx + 2, plat.y, 1, 4, '#fbbf24');
-            // Draped gold tassel over front lip every 32px
-            if (gx % 32 === 4) {
-              pRect(ctx, sx + gx + 1, plat.y + 5, 2, 2, '#f59e0b');
-            }
-          } else {
-            pRect(ctx, sx + gx - 2, plat.y - 1, 9, 6, '#32242c');
-            pRect(ctx, sx + gx - 3, plat.y + 3, 2, 2, '#f59e0b');
-            pRect(ctx, sx + gx + 7, plat.y + 3, 2, 2, '#f59e0b');
-          }
-        }
-      } else if (biome === 'forest') {
-        pRect(ctx, sx, plat.y, plat.w, plat.h, '#0d1a16');
-        pRect(ctx, sx, plat.y - 2, plat.w, 6, '#1b4735');
-        pRect(ctx, sx, plat.y - 2, plat.w, 1, '#6ee7b7');
-        for (let bx = 0; bx < plat.w; bx += 20) {
-          pRect(ctx, sx + bx, plat.y + 6, 18, 12, '#182b24');
-          pRect(ctx, sx + bx, plat.y + 6, 18, 2, '#284a3d');
-          pRect(ctx, sx + bx + 4, plat.y - 1, 8, 2, '#34d399');
-        }
-      } else {
-        pRect(ctx, sx, plat.y, plat.w, plat.h, '#160908');
-        pRect(ctx, sx, plat.y - 2, plat.w, 5, '#451a14');
-        pRect(ctx, sx, plat.y - 2, plat.w, 1, '#fb923c');
-        const lavaPulse = 0.7 + 0.3 * Math.sin(time * 4);
-        ctx.fillStyle = `rgba(249, 115, 22, ${lavaPulse})`;
-        for (let bx = 0; bx < plat.w; bx += 32) {
-          pRect(ctx, sx + bx, plat.y + 6, 28, 12, '#2b1210');
-          pRect(ctx, sx + bx, plat.y + 6, 28, 2, '#54211b');
-          ctx.fillRect(Math.round(sx + bx + 6), plat.y + 22, 18, 4);
+      const strip = getBakedFloorStrip(biome);
+      const visLeft = Math.max(0, -sx);
+      const visRight = Math.min(plat.w, PIXEL_W - sx);
+      const visW = visRight - visLeft;
+      if (visW > 0) {
+        ctx.drawImage(
+          strip,
+          visLeft,
+          0,
+          visW,
+          strip.height,
+          sx + visLeft,
+          plat.y - 2,
+          visW,
+          strip.height,
+        );
+        if (biome === 'volcano') {
+          const lavaGlow = 0.14 + 0.14 * Math.sin(time * 4.2);
+          ctx.fillStyle = `rgba(254, 240, 138, ${lavaGlow})`;
+          ctx.fillRect(Math.round(sx + visLeft), plat.y + 22, visW, 4);
         }
       }
     } else {
@@ -403,9 +371,24 @@ export function drawInteractables(
       pRect(ctx, sx + 4 + sway, p.y + 4, p.w - 8, p.h - 10, '#be123c');
       pRect(ctx, sx + 9 + sway, p.y + 8, 6, 12, '#fbbf24');
     } else if (p.kind === 'chest') {
-      pRect(ctx, sx, p.y + 4, p.w, p.h - 4, '#78350f');
-      pRect(ctx, sx, p.y + (p.activated ? 0 : 4), p.w, 6, p.activated ? '#92400e' : '#b45309');
-      pRect(ctx, sx + 8, p.y + 8, 4, 4, '#fbbf24');
+      if (p.id === 'chest_fire_sword_op') {
+        // Infernal Crimson-Orange Pedestal Glow around the OP Fire Sword chest!
+        const auraR = 22 + Math.round(Math.sin(time * 7) * 3);
+        ctx.save();
+        ctx.fillStyle = p.activated ? 'rgba(249,115,22,0.12)' : 'rgba(220,38,38,0.28)';
+        ctx.beginPath();
+        ctx.arc(sx + 10, p.y + 8, auraR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        pRect(ctx, sx - 2, p.y + 3, p.w + 4, p.h - 2, '#450a0a');
+        pRect(ctx, sx, p.y + (p.activated ? 0 : 4), p.w, 6, '#dc2626');
+        pRect(ctx, sx + 2, p.y + (p.activated ? 1 : 5), p.w - 4, 2, '#fb923c');
+        pRect(ctx, sx + 8, p.y + 8, 4, 4, '#fde047');
+      } else {
+        pRect(ctx, sx, p.y + 4, p.w, p.h - 4, '#78350f');
+        pRect(ctx, sx, p.y + (p.activated ? 0 : 4), p.w, 6, p.activated ? '#92400e' : '#b45309');
+        pRect(ctx, sx + 8, p.y + 8, 4, 4, '#fbbf24');
+      }
     } else if (p.kind === 'checkpoint') {
       pRect(ctx, sx + 4, p.y + 10, 12, 20, '#334155');
       pRect(ctx, sx + 1, p.y + 8, 18, 4, '#64748b');
@@ -420,6 +403,19 @@ export function drawInteractables(
       pRect(ctx, sx, p.y, p.w, p.h, '#f59e0b');
       pRect(ctx, sx + 4, p.y + 4, p.w - 8, p.h - 4, '#fef08a');
     }
+  }
+
+  // Cryptic glowing threshold hint at x = 0..14 inviting the player backwards behind Checkpoint 1
+  const gateScreenX = Math.round(-camX);
+  if (gateScreenX > -32 && gateScreenX < PIXEL_W + 24) {
+    const pulse = 0.38 + 0.25 * Math.sin(time * 3.8);
+    ctx.save();
+    ctx.fillStyle = `rgba(127, 29, 29, ${pulse})`;
+    ctx.fillRect(gateScreenX - 6, FLOOR_Y - 56, 12, 56);
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.72)';
+    ctx.font = 'bold 8px monospace';
+    ctx.fillText('◀ ?', gateScreenX - 2, FLOOR_Y - 62);
+    ctx.restore();
   }
 }
 
@@ -441,32 +437,41 @@ export function drawWarrior(
   isPeer = false,
   peerColor = '#60a5fa',
   peerName?: string,
+  customization: WarriorCustomization = DEFAULT_WARRIOR_CUSTOMIZATION,
 ) {
   const sx = Math.round(x - camX);
   const sy = Math.round(y);
   if (sx < -44 || sx > PIXEL_W + 44) return;
 
+  // Ground contact shadow
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+  ctx.fillRect(sx + 1, sy + 25, 14, 3);
+  ctx.restore();
+
   ctx.save();
   ctx.translate(sx + 8, sy + 26);
   ctx.scale(facing * squashX, squashY);
 
-  // Expressive multi-stage anime idle animation & quirky poses!
   const breath = Math.round(Math.sin(idleTimer * 4) * 1);
   const stride = Math.round(Math.sin(walkCycle) * 2.5);
   const cloakWave1 = Math.round(Math.sin(idleTimer * 4.5 + walkCycle) * 1.6);
   const cloakWave2 = Math.round(Math.sin(idleTimer * 4.5 + walkCycle - 0.9) * 2.4);
 
-  // Quirky anime pose cycle when standing idle > 2.5s
   const quirkCycle = idleTimer > 2.5 ? (idleTimer - 2.5) % 6 : 0;
   const isAnimePose = quirkCycle > 3.6 && quirkCycle < 5.0 && attackPhase === 'none';
 
-  const armorHi = hitFlash > 0 ? '#ffffff' : isPeer ? '#cbd5e1' : '#f8fafc';
-  const armorMain = hitFlash > 0 ? '#ffffff' : isPeer ? '#94a3b8' : '#cbd5e1';
-  const armorMid = hitFlash > 0 ? '#ffffff' : '#64748b';
-  const armorDark = hitFlash > 0 ? '#ffffff' : '#334155';
-  const capeColor = hitFlash > 0 ? '#ffffff' : isPeer ? peerColor : '#be123c';
-  const capeShadow = hitFlash > 0 ? '#ffffff' : '#7f1d1d';
-  const plumeColor = isPeer ? peerColor : '#fbbf24';
+  const baseArmor = isPeer ? '#94a3b8' : customization.armorColor;
+  const baseCape = isPeer ? peerColor : customization.cloakColor;
+  const armorHi = hitFlash > 0 ? '#ffffff' : shadeColor(baseArmor, 0.34);
+  const armorMain = hitFlash > 0 ? '#ffffff' : baseArmor;
+  const armorMid = hitFlash > 0 ? '#ffffff' : shadeColor(baseArmor, -0.32);
+  const armorDark = hitFlash > 0 ? '#ffffff' : shadeColor(baseArmor, -0.56);
+  const capeColor = hitFlash > 0 ? '#ffffff' : baseCape;
+  const capeShadow = hitFlash > 0 ? '#ffffff' : shadeColor(baseCape, -0.45);
+  const plumeColor = isPeer ? peerColor : customization.plumeColor;
+  const plumeShade = shadeColor(plumeColor, -0.32);
+  const visorGlow = isPeer ? '#38bdf8' : customization.visorColor;
 
   // Multi-segment billowing anime scarf/cape with 1px ink trim & gold hem
   pRect(ctx, -12 - cloakWave1, -21 + breath, 9, 12, '#090609');
@@ -489,62 +494,67 @@ export function drawWarrior(
   pRect(ctx, -5 + stride, -6, 3, 2, '#d97706');
   pRect(ctx, 1 - stride, -8, 4, 8, armorMain);
   pRect(ctx, 2 - stride, -7, 3, 2, armorHi);
-  pRect(ctx, 1 - stride, -6, 3, 2, '#fbbf24'); // Knee glint
+  pRect(ctx, 1 - stride, -6, 3, 2, '#fbbf24');
   pRect(ctx, 1 - stride, -3, 6, 3, '#1e293b');
-  pRect(ctx, 4 - stride, -2, 3, 1, armorHi); // Sabaton toe cap
+  pRect(ctx, 4 - stride, -2, 3, 1, armorHi);
 
-  // Sculpted knight cuirass, diagonal leather baldric + 2-lame pauldron + royal belt
+  // Sculpted knight cuirass, diagonal leather baldric + pauldron + royal belt
   pRect(ctx, -6, -19 + breath, 12, 12, armorMain);
   pRect(ctx, -5, -18 + breath, 5, 6, armorHi);
   pRect(ctx, 0, -18 + breath, 5, 7, armorMid);
-  pRect(ctx, -4, -18 + breath, 2, 2, '#78350f'); // Diagonal leather strap
+  pRect(ctx, -4, -18 + breath, 2, 2, '#78350f');
   pRect(ctx, -2, -16 + breath, 2, 2, '#78350f');
   pRect(ctx, 0, -14 + breath, 2, 2, '#78350f');
-  pRect(ctx, -2, -16 + breath, 2, 2, '#fbbf24'); // Chest clasp
-  pRect(ctx, -7, -20 + breath, 6, 5, '#d97706'); // Layered pauldron
+  pRect(ctx, -2, -16 + breath, 2, 2, '#fbbf24');
+  pRect(ctx, -7, -20 + breath, 6, 5, '#d97706');
   pRect(ctx, -6, -20 + breath, 4, 2, '#fde047');
-  pRect(ctx, -6, -17 + breath, 5, 1, '#94a3b8');
+  pRect(ctx, -6, -17 + breath, 5, 1, armorMain);
   pRect(ctx, -6, -10 + breath, 12, 2, '#b45309');
   pRect(ctx, -1, -10 + breath, 3, 2, '#fef08a');
 
-  // Visored Armet helm with gold fillet, breathing slots, eye gleam & sweeping plume
+  // Visored Armet helm with gold fillet, breathing slots, custom visor glow & sweeping plume
   pRect(ctx, -6, -28 + breath, 12, 9, armorMain);
   pRect(ctx, -5, -28 + breath, 9, 2, armorHi);
-  pRect(ctx, -6, -26 + breath, 12, 1, '#d97706'); // Crown band
+  pRect(ctx, -6, -26 + breath, 12, 1, '#d97706');
   pRect(ctx, -5, -26 + breath, 2, 7, armorMid);
-  pRect(ctx, -1, -24 + breath, 7, 3, '#0f172a'); // Dark visor slit
-  pRect(ctx, 1, -23 + breath, 3, 2, isAnimePose ? '#fef08a' : '#38bdf8');
+  pRect(ctx, -1, -24 + breath, 7, 3, '#0f172a');
+  pRect(ctx, 1, -23 + breath, 3, 2, isAnimePose ? '#fef08a' : visorGlow);
   pRect(ctx, 2, -23 + breath, 1, 1, '#ffffff');
-  pRect(ctx, 2, -20 + breath, 1, 1, '#090609'); // Breathing grille slot
+  pRect(ctx, 2, -20 + breath, 1, 1, '#090609');
   pRect(ctx, 4, -20 + breath, 1, 1, '#090609');
   pRect(ctx, -5, -33 + breath, 8, 5, '#090609');
-  pRect(ctx, -4, -32 + breath, 6, 4, plumeColor); // Sweeping plume crest
-  pRect(ctx, -9 - Math.round(cloakWave1 * 0.5), -31 + breath, 6, 3, '#f59e0b');
+  pRect(ctx, -4, -32 + breath, 6, 4, plumeColor);
+  pRect(ctx, -9 - Math.round(cloakWave1 * 0.5), -31 + breath, 6, 3, plumeShade);
 
-  // Detailed 5-style sword blades & multi-layered anime slash arc
+  // Detailed 6-style sword blades & multi-layered anime slash arc (including OP Fire Sword!)
   const weapon = WEAPONS[weaponId];
   if (attackPhase === 'active') {
     const slashY = -27 + (comboStep % 2) * 5;
     if (weaponId === 'crescent') {
-      // Twin crescent cross-slash
       ctx.fillStyle = weapon.accentColor;
       ctx.fillRect(5, slashY - 4, weapon.range, 6);
       ctx.fillRect(-weapon.range * 0.55, slashY + 4, weapon.range * 0.65, 5);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(8, slashY - 2, weapon.range - 6, 2);
     } else if (weaponId === 'rapier') {
-      // Needle multi-thrust streaks
       ctx.fillStyle = weapon.accentColor;
       ctx.fillRect(6, slashY + 1, weapon.range + 4, 3);
       ctx.fillRect(10, slashY - 4, weapon.range - 4, 2);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(8, slashY + 2, weapon.range, 1);
     } else if (weaponId === 'katana') {
-      // Razor Iaido horizontal flash arc
       ctx.fillStyle = weapon.accentColor;
       ctx.fillRect(4, slashY - 1, weapon.range + 6, 7);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(6, slashY + 1, weapon.range + 2, 2);
+    } else if (weaponId === 'fire_sword') {
+      // Strong crimson + scorching orange wide inferno slash arc + ember sparks!
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(4, slashY - 3, weapon.range + 6, 13);
+      ctx.fillStyle = '#fb923c';
+      ctx.fillRect(6, slashY, weapon.range + 2, 8);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(9, slashY + 2, weapon.range - 8, 3);
     } else {
       ctx.fillStyle = weapon.accentColor;
       ctx.fillRect(5, slashY, weapon.range - 2, 9);
@@ -555,7 +565,7 @@ export function drawWarrior(
     }
   } else if (attackPhase === 'windup') {
     pRect(ctx, -10, -26 + breath, 4, 16, weapon.color);
-    pRect(ctx, -9, -25 + breath, 1, 13, '#ffffff');
+    pRect(ctx, -9, -25 + breath, 1, 13, weaponId === 'fire_sword' ? '#fef08a' : '#ffffff');
     pRect(ctx, -11, -13 + breath, 6, 2, weapon.accentColor);
   } else if (isAnimePose) {
     pRect(ctx, 4, -27 + breath, 3, 19, weapon.color);
@@ -572,13 +582,19 @@ export function drawWarrior(
       pRect(ctx, 4, -21 + breath, 2, 15, weapon.color);
       pRect(ctx, 6, -22 + breath, 3, 6, '#ffffff');
       pRect(ctx, 3, -12 + breath, 5, 2, weapon.accentColor);
+    } else if (weaponId === 'fire_sword') {
+      const fJitter = Math.round(Math.sin(idleTimer * 18) * 1);
+      pRect(ctx, 3, -24 + breath, 4, 17, '#dc2626');
+      pRect(ctx, 4, -23 + breath, 2, 14, '#fb923c');
+      pRect(ctx, 4, -22 + breath + fJitter, 1, 11, '#fef08a');
+      pRect(ctx, 2, -12 + breath, 6, 2, '#fbbf24');
     } else {
       pRect(ctx, 4, -20 + breath, 3, 14, weapon.color);
       pRect(ctx, 5, -19 + breath, 1, 11, '#ffffff');
       pRect(ctx, 3, -12 + breath, 5, 2, weapon.accentColor);
     }
     if (idleTimer > 1 && Math.floor(idleTimer * 2) % 6 === 0) {
-      drawPixelSparkle(ctx, 5, -16 + breath, 1, '#ffffff');
+      drawPixelSparkle(ctx, 5, -16 + breath, 1, weaponId === 'fire_sword' ? '#fb923c' : '#ffffff');
     }
   }
 
@@ -612,6 +628,12 @@ export function drawEnemy(
   const sx = Math.round(enemy.x - camX);
   const sy = Math.round(enemy.y);
   if (sx < -40 || sx > PIXEL_W + 40) return;
+
+  // Ground contact shadow
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+  ctx.fillRect(sx + 2, sy + enemy.h - 2, Math.max(10, enemy.w - 4), 3);
+  ctx.restore();
 
   ctx.save();
   ctx.translate(sx + enemy.w / 2, sy + enemy.h);
@@ -798,17 +820,27 @@ export function drawJoJoBoss(
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   if (boss.hitFlash > 0) {
-    ctx.filter = 'brightness(2.2) contrast(1.4)';
+    ctx.globalAlpha = 0.72;
   }
 
   if (isBattle) {
     // Native 116x116 1:1 CPS3 sprite (boots at y=110) aligned flush onto Pokemon Battle Dais
     ctx.drawImage(sprite, Math.round(sx - 34), Math.round(sy - 78 + floatBob));
+    if (boss.hitFlash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.45;
+      ctx.drawImage(sprite, Math.round(sx - 34), Math.round(sy - 78 + floatBob));
+    }
   } else {
     // Corridor Boss: 62x64 crisp native sprite (boots at y=61) facing player cleanly
     ctx.translate(sx + 12, sy + 36);
     ctx.scale(-boss.facing, 1);
     ctx.drawImage(sprite, -24, -61 + floatBob);
+    if (boss.hitFlash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.45;
+      ctx.drawImage(sprite, -24, -61 + floatBob);
+    }
   }
   ctx.restore();
 
@@ -882,6 +914,7 @@ export function drawPeer(
     true,
     peer.color,
     peer.name,
+    peer.customization,
   );
 }
 
@@ -923,7 +956,101 @@ function drawBattleSlashFx(
     }
   };
 
-  if (fx.style === 'sword') {
+  const [pal0, pal1, pal2] = fx.palette ?? [fx.color, fx.accentColor, '#fde047'];
+
+  const drawColoredSword = (sx: number, sy: number, angle: number, length: number, bladeColor: string, edgeColor: string) => {
+    ctx.save();
+    ctx.translate(Math.round(sx), Math.round(sy));
+    ctx.rotate(angle);
+    pRect(ctx, -3, -Math.round(length * 0.5), 6, length, bladeColor);
+    pRect(ctx, -1, -Math.round(length * 0.48), 2, length - 2, '#ffffff');
+    pRect(ctx, -7, Math.round(length * 0.25), 14, 3, edgeColor);
+    pRect(ctx, -2, Math.round(length * 0.28), 4, 8, '#fbbf24');
+    ctx.restore();
+  };
+
+  if (fx.style === 'mega_cross_swords') {
+    const s = Math.min(1, p * 1.45);
+    drawColoredSword(cx - 28 + s * 28, cy - 26 + s * 26, Math.PI * 0.25, 58, pal0, pal2);
+    drawColoredSword(cx + 28 - s * 28, cy - 26 + s * 26, -Math.PI * 0.25, 58, pal1, pal2);
+    drawDiagSlash(-6, 0, 1, Math.min(1, p * 1.8), 68);
+    if (p > 0.2) drawDiagSlash(6, 0, -1, Math.min(1, (p - 0.2) * 1.8), 68);
+  } else if (fx.style === 'mega_prism_knives') {
+    const cols = [pal0, pal1, pal2, '#34d399', '#f472b6'];
+    for (let i = 0; i < 7; i++) {
+      const ang = (i / 7) * Math.PI * 2 + p * 2.5;
+      const dist = (1 - Math.min(1, p * 1.35)) * 46;
+      drawColoredSword(cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist, ang + Math.PI / 2, 22, cols[i % cols.length], '#ffffff');
+    }
+    if (p > 0.45) drawPixelSparkle(ctx, cx, cy, Math.round((p - 0.45) * 32), pal1);
+  } else if (fx.style === 'mega_clock_shatter') {
+    const rad = 16 + Math.round(p * 32);
+    ctx.strokeStyle = pal1;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = pal2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(p * 10) * rad, cy + Math.sin(p * 10) * rad);
+    ctx.stroke();
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + p * 1.5;
+      pRect(ctx, cx + Math.cos(a) * rad * 0.8 - 2, cy + Math.sin(a) * rad * 0.8 - 2, 5, 5, pal0);
+    }
+  } else if (fx.style === 'mega_rainbow_barrage') {
+    const cols = ['#f43f5e', '#fb923c', '#fde047', '#34d399', '#38bdf8', '#a855f7'];
+    cols.forEach((c, idx) => {
+      const start = idx * 0.09;
+      if (p > start) {
+        const t = Math.min(1, (p - start) * 2.3);
+        const dir: 1 | -1 = idx % 2 === 0 ? 1 : -1;
+        const ox = (idx - 2.5) * 9;
+        const oy = ((idx % 3) - 1) * 10;
+        ctx.strokeStyle = c;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(cx + ox - dir * 24, cy + oy - 22);
+        ctx.lineTo(cx + ox - dir * 24 + dir * 48 * t, cy + oy - 22 + 44 * t);
+        ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    });
+  } else if (fx.style === 'mega_guillotine') {
+    const drop = Math.min(1, p * 1.65);
+    const bladeY = cy - 64 + drop * 68;
+    drawColoredSword(cx, bladeY, 0, 74, pal0, pal1);
+    if (drop >= 0.85) {
+      const shock = Math.round((p - 0.5) * 110);
+      pRect(ctx, cx - shock / 2, cy + 14, shock, 6, pal1);
+      pRect(ctx, cx - shock / 3, cy + 12, (shock * 2) / 3, 3, pal2);
+    }
+  } else if (fx.style === 'mega_sword_vortex') {
+    const ring = [pal0, pal1, pal2, '#f43f5e'];
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + p * 8;
+      const rx = 24 + Math.sin(p * Math.PI) * 14;
+      drawColoredSword(cx + Math.cos(ang) * rx, cy + Math.sin(ang) * rx * 0.65, ang, 24, ring[i % ring.length], '#ffffff');
+    }
+  } else if (fx.style === 'mega_soulfire_pillars') {
+    [-26, 0, 26].forEach((ox, idx) => {
+      const h = Math.round(Math.sin(Math.min(1, p * 1.35) * Math.PI) * 76);
+      pRect(ctx, cx + ox - 8, cy + 28 - h, 16, h, idx % 2 === 0 ? pal0 : pal1);
+      pRect(ctx, cx + ox - 4, cy + 28 - h, 8, h, pal2);
+      pRect(ctx, cx + ox - 2, cy + 28 - Math.round(h * 0.8), 4, Math.round(h * 0.8), '#ffffff');
+    });
+  } else if (fx.style === 'mega_cross_execution') {
+    const cList = [pal0, pal1, pal2];
+    [-16, 0, 16].forEach((ox, idx) => {
+      const t = Math.min(1, Math.max(0, (p - idx * 0.12) * 1.8));
+      if (t > 0) {
+        drawColoredSword(cx + ox, cy - 30 + t * 34, (idx - 1) * 0.55, 54, cList[idx], '#ffffff');
+      }
+    });
+  } else if (fx.style === 'sword') {
     drawDiagSlash(0, 0, 1, Math.min(1, p * 1.6), 62);
   } else if (fx.style === 'cross') {
     drawDiagSlash(-4, -2, 1, Math.min(1, p * 1.9), 58);
@@ -990,6 +1117,22 @@ function drawBattleSlashFx(
         i % 2 === 0 ? fx.color : '#fef08a',
       );
     }
+  } else if (fx.style === 'ora_barrage') {
+    const frame: 0 | 1 = Math.floor(p * 26) % 2 === 0 ? 0 : 1;
+    const sp = getBakedStarPlatinumSprite(frame);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(sp, Math.round(cx - 56), Math.round(cy - 26 + Math.sin(p * 30) * 3));
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2 + p * 14;
+      const rx = cx + Math.cos(ang) * 14;
+      const ry = cy + Math.sin(ang) * 16;
+      pRect(ctx, rx - 4, ry - 2, 9, 4, i % 2 === 0 ? '#a78bfa' : '#fbbf24');
+      pRect(ctx, rx + 2, ry - 1, 3, 2, '#ffffff');
+    }
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('ORA ORA!', cx, cy - 26);
   } else {
     [-12, 0, 12].forEach((offset, idx) => {
       const start = idx * 0.1;
@@ -1177,17 +1320,25 @@ export function drawPokemonBossStage(
   const playerIsSlashing = phase === 'player_anim' && phaseProgress < 0.6;
   const playerHurtFlash =
     phase === 'enemy_anim' && slashFx && slashFx.progress > 0.2 && slashFx.progress < 0.65;
-  const warriorSprite = getBakedWarriorBattleSprite(player.equippedWeapon, playerIsSlashing);
+  const warriorSprite = getBakedWarriorBattleSprite(
+    player.equippedWeapon,
+    playerIsSlashing,
+    player.customization,
+  );
   const warriorBob = Math.round(Math.sin(time * 4) * 1.5);
   const wx = Math.round(playerDaisX + playerLunge + playerRunOff + playerHitJitter - 28);
   const wy = Math.round(playerDaisY - 63 + warriorBob);
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  if (playerHurtFlash) {
-    ctx.filter = 'brightness(2.2) contrast(1.4)';
-  }
   ctx.drawImage(warriorSprite, wx, wy);
+  if (playerHurtFlash) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(warriorSprite, wx, wy);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+  }
   if (guardActive) {
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 2;
@@ -1246,4 +1397,200 @@ export function drawPokemonBossStage(
     drawBattleSlashFx(ctx, targetX, targetY, slashFx);
   }
 }
+
+/**
+ * Atmospheric darkness & warm torchlight mask when stepping backwards into the Dark Hidden Sanctum (x < 0).
+ */
+export function drawDarkSanctumLighting(
+  ctx: CanvasRenderingContext2D,
+  camX: number,
+  playerX: number,
+  playerY: number,
+  time: number,
+) {
+  if (camX >= 40) return;
+  const darkStrength = Math.max(0, Math.min(0.84, ((40 - camX) / 140) * 0.84));
+  const playerScreenX = Math.round(playerX - camX + 8);
+  const playerScreenY = Math.round(playerY + 12);
+
+  ctx.save();
+  // Dark shadow veil across sanctum region
+  const veilWidth = Math.max(0, Math.min(PIXEL_W, Math.round(0 - camX + 40)));
+  if (veilWidth > 0) {
+    ctx.fillStyle = `rgba(4, 2, 6, ${darkStrength})`;
+    ctx.fillRect(0, 0, veilWidth, PIXEL_H);
+  }
+  // Flickering warm torchlight halos around player + sanctum braziers + Fire Sword altar
+  const torches = [
+    { x: playerScreenX, y: playerScreenY, r: 78 },
+    { x: Math.round(-120 - camX), y: FLOOR_Y - 16, r: 54 },
+    { x: Math.round(-320 - camX), y: FLOOR_Y - 16, r: 54 },
+    { x: Math.round(-520 - camX), y: FLOOR_Y - 22, r: 68 },
+  ];
+  for (const t of torches) {
+    if (t.x < -t.r || t.x > PIXEL_W + t.r) continue;
+    const pulse = t.r + Math.sin(time * 7 + t.x) * 3;
+    const g = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, pulse);
+    g.addColorStop(0, 'rgba(251, 146, 60, 0.24)');
+    g.addColorStop(0.55, 'rgba(220, 38, 38, 0.1)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(Math.round(t.x - pulse), Math.round(t.y - pulse), Math.round(pulse * 2), Math.round(pulse * 2));
+  }
+  ctx.restore();
+}
+
+/**
+ * Molten Volcano Pit Chasm lava pool rendered under the Chunk 41 slipping bridge entry!
+ */
+export function drawVolcanoPitChasm(
+  ctx: CanvasRenderingContext2D,
+  pitStartX: number,
+  pitWidth: number,
+  camX: number,
+  time: number,
+) {
+  const sx = Math.round(pitStartX - camX);
+  if (sx + pitWidth < 0 || sx > PIXEL_W) return;
+
+  pRect(ctx, sx, FLOOR_Y, pitWidth, PIXEL_H - FLOOR_Y, '#140303');
+  pRect(ctx, sx, FLOOR_Y + 12, pitWidth, PIXEL_H - FLOOR_Y - 12, '#991b1b');
+  pRect(ctx, sx, FLOOR_Y + 18, pitWidth, PIXEL_H - FLOOR_Y - 18, '#ea580c');
+  for (let lx = 0; lx < pitWidth; lx += 16) {
+    const wave = Math.round(Math.sin(time * 5 + lx * 0.25) * 2);
+    pRect(ctx, sx + lx, FLOOR_Y + 14 + wave, 14, 4, '#fb923c');
+    pRect(ctx, sx + lx + 3, FLOOR_Y + 15 + wave, 8, 2, '#fef08a');
+  }
+}
+
+/**
+ * Colossal Dimensional Glitch-Crash & Mega Boss Introduction Cutscene rendered directly onto the Pixel Canvas!
+ */
+export function drawMegaBossCutscene(
+  ctx: CanvasRenderingContext2D,
+  cutscene: MegaCutsceneHud,
+  pendingBoss: ActiveBoss,
+  time: number,
+) {
+  ctx.save();
+  if (cutscene.phase === 'glitch') {
+    // Reality chromatic tear & glitch bands
+    ctx.fillStyle = 'rgba(12, 4, 24, 0.72)';
+    ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
+    const barColors = ['#22d3ee', '#f43f5e', '#fde047', '#8b5cf6'];
+    for (let i = 0; i < 18; i++) {
+      const y = ((i * 19 + Math.floor(time * 90) * 11) % PIXEL_H);
+      const h = 3 + (i % 5) * 2;
+      const offset = Math.round(Math.sin(time * 48 + i) * 34);
+      ctx.fillStyle = barColors[i % barColors.length];
+      ctx.globalAlpha = 0.65;
+      ctx.fillRect(Math.max(0, offset), y, PIXEL_W - Math.abs(offset), h);
+    }
+    ctx.globalAlpha = 1;
+    pRect(ctx, 74, 108, PIXEL_W - 148, 48, '#09060b');
+    ctx.strokeStyle = '#f43f5e';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(74, 108, PIXEL_W - 148, 48);
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('!! DIMENSIONAL GLITCH BREACH !!', PIXEL_W / 2, 130);
+    ctx.fillStyle = '#22d3ee';
+    ctx.font = 'bold 9px monospace';
+    ctx.fillText('A COLOSSAL MEGA BOSS IS CRASHING INTO YOUR WORLD...', PIXEL_W / 2, 146);
+  } else {
+    // Dramatic Dark Dimensional Portal + Scaled Mega Boss Portrait & Full Sprite Reveal
+    const p = Math.min(1, cutscene.progress * 1.4);
+    ctx.fillStyle = 'rgba(7, 3, 15, 0.88)';
+    ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
+
+    const accent = cutscene.archetype === 'mega_dio' ? '#facc15' : '#8b5cf6';
+    const subAccent = cutscene.archetype === 'mega_dio' ? '#22d3ee' : '#34d399';
+
+    // Diagonal speed lines behind Mega Boss
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.42;
+    for (let s = 0; s < 16; s++) {
+      const sx = ((s * 44 - time * 140) % (PIXEL_W + 90)) - 30;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx - 60, PIXEL_H);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Radiant vortex ring behind boss
+    ctx.strokeStyle = subAccent;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(PIXEL_W / 2, 118, 52 + Math.sin(time * 8) * 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw zoomed crisp Mega Boss Sprite centered dramatically
+    const sprite = getBakedJoJoBossSprite(pendingBoss.def, 'attack', true);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    const scale = 1.2 + p * 0.25;
+    const drawW = Math.round(sprite.width * scale);
+    const drawH = Math.round(sprite.height * scale);
+    ctx.drawImage(
+      sprite,
+      Math.round(PIXEL_W / 2 - drawW / 2),
+      Math.round(124 - drawH / 2),
+      drawW,
+      drawH,
+    );
+    ctx.restore();
+
+    // Dramatic lower nameplate banner
+    pRect(ctx, 44, 186, PIXEL_W - 88, 62, '#09060b');
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(44, 186, PIXEL_W - 88, 62);
+    pRect(ctx, 48, 190, 48, 48, '#140c1e');
+    ctx.save();
+    ctx.translate(48, 190);
+    drawBossPortrait(ctx, pendingBoss.def, 'wryyy', 48);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/**
+ * Renders the Bastera-armored Pixel Star Platinum Guardian beside the Knight during ORA ORA barrage (2.5s)!
+ */
+export function drawStarPlatinumGuardian(
+  ctx: CanvasRenderingContext2D,
+  playerX: number,
+  playerY: number,
+  facing: 1 | -1,
+  camX: number,
+  time: number,
+  remainingSec: number,
+) {
+  const frame: 0 | 1 = Math.floor(time * 20) % 2 === 0 ? 0 : 1;
+  const sp = getBakedStarPlatinumSprite(frame);
+  const sx = Math.round(playerX - camX + 8);
+  const sy = Math.round(playerY - 12 + Math.sin(time * 18) * 2);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.globalAlpha = Math.min(0.95, remainingSec * 2);
+  ctx.translate(sx, sy);
+  ctx.scale(facing, 1);
+  ctx.drawImage(sp, -10, -8);
+
+  // Rapid floating impact bursts in front of fists
+  for (let i = 0; i < 3; i++) {
+    const t = (time * 9 + i * 0.33) % 1;
+    const fx = Math.round(28 + t * 32);
+    const fy = Math.round(6 + ((i * 11) % 18));
+    pRect(ctx, fx, fy, 7, 3, i % 2 === 0 ? '#a78bfa' : '#fbbf24');
+    pRect(ctx, fx + 4, fy + 1, 3, 2, '#ffffff');
+  }
+  ctx.restore();
+}
+
+
 

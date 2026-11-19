@@ -26,10 +26,9 @@ export interface BossBattleState {
   slashFx: BossBattleSlashFx | null;
   playerLunge: number;
   bossLunge: number;
+  activeSkillName: string | null;
+  activeSkillPalette: [string, string, string] | null;
   pendingOutcome: 'continue' | 'victory' | 'defeat' | 'run' | 'escape';
-  jotaroLine: string | null;
-  jotaroVoiceStatus: 'idle' | 'generating' | 'ready' | 'error';
-  jotaroVoiceError: string | null;
 }
 
 const BOSS_BATTLE_SHOUTS = [
@@ -57,10 +56,9 @@ export function createBossBattleState(boss: ActiveBoss): BossBattleState {
     slashFx: null,
     playerLunge: 0,
     bossLunge: 0,
+    activeSkillName: null,
+    activeSkillPalette: null,
     pendingOutcome: 'continue',
-    jotaroLine: null,
-    jotaroVoiceStatus: 'idle',
-    jotaroVoiceError: null,
   };
 }
 
@@ -85,9 +83,10 @@ export function toBossBattleSnapshot(b: BossBattleState): BossBattleSnapshot {
     primaryColor: b.boss.def.primaryColor,
     secondaryColor: b.boss.def.secondaryColor,
     auraColor: b.boss.def.auraColor,
-    jotaroLine: b.jotaroLine,
-    jotaroVoiceStatus: b.jotaroVoiceStatus,
-    jotaroVoiceError: b.jotaroVoiceError,
+    isMegaBoss: Boolean(b.boss.def.isMegaBoss),
+    megaArchetype: b.boss.def.megaArchetype,
+    activeSkillName: b.activeSkillName,
+    activeSkillPalette: b.activeSkillPalette,
   };
 }
 
@@ -135,11 +134,23 @@ export function resolvePlayerBattleSkill(
   battle: BossBattleState,
   player: PlayerState,
   slotIndex: 0 | 1 | 2,
-): { ok: boolean; skillId: SkillId; damage: number; defeated: boolean; reason?: string } {
+): {
+  ok: boolean;
+  skillId: SkillId;
+  damage: number;
+  defeated: boolean;
+  reason?: string;
+} {
   const skillId = player.skillSlots[slotIndex];
   const skill = SKILLS[skillId];
   if (battle.phase !== 'menu') {
-    return { ok: false, skillId, damage: 0, defeated: false, reason: 'Wait for current turn.' };
+    return {
+      ok: false,
+      skillId,
+      damage: 0,
+      defeated: false,
+      reason: 'Wait for current turn.',
+    };
   }
   if (player.stamina < skill.staminaCost) {
     return {
@@ -172,8 +183,8 @@ export function resolvePlayerBattleSkill(
   } else if (skillId === 'stand_rush') {
     defeated = applyDamageToBoss(battle.boss, dmg, 0).defeatedNow;
     battle.lastPlayerDamage = dmg;
-    battle.message = `ORA ORA ORA! Spirit Knight 5-hit barrage carved ${dmg} DMG!`;
-    slashStyle = 'barrage';
+    battle.message = `ORA ORA ORA! Pixel Star Platinum punches ${battle.boss.def.name} for ${dmg} DMG!`;
+    slashStyle = 'ora_barrage';
   } else if (skillId === 'candlefire_wave') {
     defeated = applyDamageToBoss(battle.boss, dmg, 0).defeatedNow;
     battle.lastPlayerDamage = dmg;
@@ -194,10 +205,11 @@ export function resolvePlayerBattleSkill(
   }
 
   battle.phase = 'player_anim';
-  battle.phaseDuration = 0.82;
-  battle.phaseTimer = 0.82;
+  const animDur = skillId === 'stand_rush' ? 2.0 : 0.82;
+  battle.phaseDuration = animDur;
+  battle.phaseTimer = animDur;
   battle.lastBossDamage = null;
-  battle.speaker = 'Warrior';
+  battle.speaker = skillId === 'stand_rush' ? 'Star Platinum [ORA]' : 'Warrior';
   battle.slashFx = {
     target: 'boss',
     style: slashStyle,
@@ -282,6 +294,54 @@ export function triggerBossCounterTurn(
     };
   }
 
+  if (battle.boss.def.isMegaBoss && battle.boss.def.megaSkills && battle.boss.def.megaSkills.length > 0) {
+    const skills = battle.boss.def.megaSkills;
+    const skill = skills[(battle.turnCount - 1) % skills.length];
+    const effectiveFloor = Math.max(1, battle.boss.def.index % 100);
+    const rawDamage = Math.round(
+      (18 + Math.floor(effectiveFloor * 0.55) + (battle.turnCount % 2) * 3) * skill.damageMult,
+    );
+    const speedReduction = Math.min(0.25, player.stats.speed * 0.015);
+    let finalDamage = Math.max(4, Math.round(rawDamage * (1 - speedReduction)));
+
+    if (battle.guardActive) {
+      finalDamage = Math.max(3, Math.round(finalDamage * 0.35));
+      battle.guardActive = false;
+    } else if (battle.evadeBoost) {
+      finalDamage = Math.max(4, Math.round(finalDamage * 0.65));
+      battle.evadeBoost = false;
+    }
+
+    player.hp = Math.max(0, player.hp - finalDamage);
+    player.hitFlash = 0.2;
+
+    battle.phase = 'enemy_anim';
+    battle.phaseDuration = 1.05;
+    battle.phaseTimer = 1.05;
+    battle.lastBossDamage = finalDamage;
+    battle.activeSkillName = skill.name;
+    battle.activeSkillPalette = skill.palette;
+    battle.speaker = `${battle.boss.def.name} [MEGA BOSS]`;
+    battle.message = `${skill.name.toUpperCase()}! ${skill.shout} (-${finalDamage} HP)`;
+    battle.slashFx = {
+      target: 'player',
+      style: skill.animStyle,
+      color: skill.palette[0],
+      accentColor: skill.palette[1],
+      palette: skill.palette,
+      skillName: skill.name,
+      progress: 0,
+    };
+    battle.pendingOutcome = player.hp <= 0 ? 'defeat' : 'continue';
+
+    return {
+      skippedByFreeze: false,
+      damageTaken: finalDamage,
+      playerDefeated: player.hp <= 0,
+      shout: skill.shout,
+    };
+  }
+
   const pattern = battle.boss.def.attackPattern;
   const patternMult =
     pattern === 'gravity_orb' || pattern === 'magma_eruption'
@@ -333,6 +393,8 @@ export function triggerBossCounterTurn(
   battle.phaseDuration = 0.95;
   battle.phaseTimer = 0.95;
   battle.lastBossDamage = finalDamage;
+  battle.activeSkillName = battle.boss.def.attackName;
+  battle.activeSkillPalette = null;
   battle.speaker = `${battle.boss.def.name} [${battle.boss.def.standName}]`;
   battle.message = `${shout} (-${finalDamage} HP${extraNote})`;
   battle.slashFx = {

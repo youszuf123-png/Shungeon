@@ -1,0 +1,55 @@
+### Page
+- Page URL: http://localhost:3000/?autostart=1
+- Page Title: Bastera: Endless Citadel
+- Console: 0 errors, 2 warnings
+### Snapshot
+```yaml
+- main [ref=e3]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic: HP 115/115
+            - generic: 25G
+          - generic:
+            - generic: Abandoned Royal Castle
+            - generic [aria-hidden]: ·
+            - generic: Boss 0/120
+            - generic [aria-hidden]: ·
+            - generic: Secrets 0/108
+        - generic [ref=e6]:
+          - generic [ref=e7]:
+            - generic [ref=e8]: LV.1
+            - generic [ref=e9]: PTS:0
+            - button "SKL:0" [disabled] [ref=e10]
+            - button "ATK:0" [disabled] [ref=e11]
+            - button "HP:0" [disabled] [ref=e12]
+            - button "SPD:0" [disabled] [ref=e13]
+          - button "STATUS [K]" [ref=e14] [cursor=pointer]
+      - generic [ref=e15]:
+        - generic [ref=e16]: "Online: 1"
+        - button "Open Main Sanctuary Interface" [ref=e17] [cursor=pointer]: SANCTUARY [C]
+        - button "Open Inventory" [ref=e18] [cursor=pointer]
+        - button "Checkpoints and Boss Codex" [ref=e22] [cursor=pointer]
+        - button "Rotate Screen Perspective" [ref=e26] [cursor=pointer]
+        - button "Mute Audio" [ref=e30] [cursor=pointer]
+        - button "Pause Game" [ref=e34] [cursor=pointer]
+    - generic:
+      - generic: "-43m · CP 1"
+      - generic [ref=e46]:
+        - button "claymore weapon icon [J] Vanguard Style Knight's Claymore" [ref=e47] [cursor=pointer]:
+          - generic "claymore weapon icon" [ref=e48]
+          - generic [ref=e49]:
+            - generic [ref=e50]: "[J] Vanguard Style"
+            - generic [ref=e51]: Knight's Claymore
+        - button "[1] DASH 18ST" [ref=e52] [cursor=pointer]:
+          - generic [ref=e53]: "[1] DASH"
+          - generic [ref=e54]: 18ST
+        - button "[2] WAVE 22ST" [ref=e55] [cursor=pointer]:
+          - generic [ref=e56]: "[2] WAVE"
+          - generic [ref=e57]: 22ST
+        - button "[3] RUSH 26ST" [ref=e58] [cursor=pointer]:
+          - generic [ref=e59]: "[3] RUSH"
+          - generic [ref=e60]: 26ST
+```

@@ -7,6 +7,8 @@ interface StatusModalsProps {
   onRestartCheckpoint: () => void;
   onNewGame: () => void;
   onTitle: () => void;
+  onQuickSave: () => void;
+  onOpenSaves: () => void;
 }
 
 export const StatusModals: React.FC<StatusModalsProps> = ({
@@ -15,6 +17,8 @@ export const StatusModals: React.FC<StatusModalsProps> = ({
   onRestartCheckpoint,
   onNewGame,
   onTitle,
+  onQuickSave,
+  onOpenSaves,
 }) => {
   if (hud.status !== 'paused' && hud.status !== 'gameover' && hud.status !== 'victory') {
     return null;
@@ -35,10 +39,10 @@ export const StatusModals: React.FC<StatusModalsProps> = ({
         </h2>
         <p className="font-pixel-mono text-xs text-amber-300/80 mb-5">
           {isPause
-            ? 'Even JoJo bosses wait politely while you catch your breath.'
+            ? 'Even citadel guardians wait politely while you catch your breath.'
             : isVictory
               ? 'You survived 120 dramatic villains and a terrifying wax budget.'
-              : 'Your Stand-less bones decorate the hallway. Try again from the last brazier.'}
+              : 'Your bones decorate the royal carpet. Try again from the last brazier.'}
         </p>
 
         <div className="grid grid-cols-3 gap-2 mb-6">
@@ -80,6 +84,26 @@ export const StatusModals: React.FC<StatusModalsProps> = ({
             >
               {isVictory ? 'Play Again' : 'Respawn at Checkpoint'}
             </button>
+          )}
+          {isPause && (
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                data-testid="pause-save-btn"
+                onClick={onQuickSave}
+                className="py-2 text-xs font-pixel-mono bg-[#143326] border border-emerald-400/70 hover:border-emerald-200 text-emerald-100 cursor-pointer"
+              >
+                Quick Save
+              </button>
+              <button
+                type="button"
+                data-testid="pause-load-btn"
+                onClick={onOpenSaves}
+                className="py-2 text-xs font-pixel-mono bg-[#10263a] border border-cyan-400/70 hover:border-cyan-200 text-cyan-100 cursor-pointer"
+              >
+                Save / Load Slots
+              </button>
+            </div>
           )}
           <div className="grid grid-cols-2 gap-2.5">
             <button

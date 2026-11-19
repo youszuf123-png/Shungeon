@@ -103,6 +103,34 @@ export interface PlayerStats {
   speed: number;
 }
 
+export interface WarriorCustomization {
+  cloakColor: string;
+  armorColor: string;
+  visorColor: string;
+  plumeColor: string;
+}
+
+export type MegaBossArchetype = 'mega_dio' | 'mega_undead_knight';
+
+export type MegaSkillAnimStyle =
+  | 'mega_cross_swords'
+  | 'mega_prism_knives'
+  | 'mega_clock_shatter'
+  | 'mega_rainbow_barrage'
+  | 'mega_guillotine'
+  | 'mega_sword_vortex'
+  | 'mega_soulfire_pillars'
+  | 'mega_cross_execution';
+
+export interface MegaBossSkillDef {
+  id: string;
+  name: string;
+  animStyle: MegaSkillAnimStyle;
+  palette: [string, string, string];
+  damageMult: number;
+  shout: string;
+}
+
 export interface BossDef {
   index: number; // 1 .. 120+
   name: string;
@@ -119,6 +147,9 @@ export interface BossDef {
   secondaryColor: string;
   auraColor: string;
   skinColor: string;
+  isMegaBoss?: boolean;
+  megaArchetype?: MegaBossArchetype;
+  megaSkills?: MegaBossSkillDef[];
   hatStyle:
     | 'crown'
     | 'pompadour'
@@ -285,6 +316,7 @@ export interface PlayerState {
   unlockedWeapons: WeaponId[];
   skillSlots: [SkillId, SkillId, SkillId];
   skillCooldowns: [number, number, number];
+  dashCooldown: number;
   attackPhase: 'none' | 'windup' | 'active' | 'recovery';
   attackTimer: number;
   comboStep: number;
@@ -303,8 +335,33 @@ export interface PlayerState {
   level: number;
   statPoints: number;
   stats: PlayerStats;
+  customization: WarriorCustomization;
   highestCheckpointX: number;
   highestCheckpointIndex: number;
+}
+
+export type WorldRole = 'host' | 'guest';
+
+export interface OnlineWorldSummary {
+  worldId: string;
+  hostPeerId: string;
+  hostName: string;
+  biome: BiomeId;
+  bossesDefeated: number;
+  playerCount: number;
+  isPublic: boolean;
+}
+
+export interface BasteraSaveSummary {
+  saveId: string;
+  playerName: string;
+  savedAt: string;
+  biome: BiomeId;
+  level: number;
+  bossesDefeated: number;
+  distanceMeters: number;
+  gold: number;
+  equippedWeapon: WeaponId;
 }
 
 export interface MultiplayerPeer {
@@ -320,6 +377,9 @@ export interface MultiplayerPeer {
   biome: string;
   bossesDefeated: number;
   color: string;
+  customization?: WarriorCustomization;
+  worldId?: string;
+  role?: WorldRole;
 }
 
 export type BossBattlePhase =
@@ -345,9 +405,13 @@ export interface BossBattleSlashFx {
     | 'knife_volley'
     | 'seismic'
     | 'void_crush'
-    | 'lightning';
+    | 'lightning'
+    | 'ora_barrage'
+    | MegaSkillAnimStyle;
   color: string;
   accentColor: string;
+  palette?: [string, string, string];
+  skillName?: string;
   progress: number; // 0..1
 }
 
@@ -371,9 +435,20 @@ export interface BossBattleSnapshot {
   primaryColor: string;
   secondaryColor: string;
   auraColor: string;
-  jotaroLine: string | null;
-  jotaroVoiceStatus: 'idle' | 'generating' | 'ready' | 'error';
-  jotaroVoiceError: string | null;
+  isMegaBoss?: boolean;
+  megaArchetype?: MegaBossArchetype;
+  activeSkillName?: string | null;
+  activeSkillPalette?: [string, string, string] | null;
+}
+
+export interface MegaCutsceneHud {
+  archetype: MegaBossArchetype;
+  name: string;
+  title: string;
+  standName: string;
+  subtitle: string;
+  phase: 'glitch' | 'reveal';
+  progress: number;
 }
 
 export interface HudSnapshot {
@@ -386,6 +461,7 @@ export interface HudSnapshot {
   level: number;
   statPoints: number;
   stats: PlayerStats;
+  customization: WarriorCustomization;
   monstersSlain: number;
   biome: BiomeId;
   biomeLabel: string;
@@ -398,6 +474,10 @@ export interface HudSnapshot {
   unlockedWeapons: WeaponId[];
   skillSlots: [SkillId, SkillId, SkillId];
   skillCooldowns: [number, number, number];
+  dashCooldown: number;
+  starPlatinumActive: boolean;
+  bossCooldownSeconds: number;
+  bossFoughtStreak: number;
   inventory: InventoryItem[];
   dialogue: DialogueState | null;
   activeBoss: {
@@ -410,10 +490,20 @@ export interface HudSnapshot {
     voiceLine: string;
   } | null;
   bossBattle: BossBattleSnapshot | null;
+  megaCutscene: MegaCutsceneHud | null;
   checkpoints: { index: number; x: number; biome: BiomeId; label: string; reached: boolean }[];
   onlineCount: number;
+  worldId: string;
+  worldRole: WorldRole;
+  worldHostName: string | null;
+  isWorldPublic: boolean;
+  onlineWorlds: OnlineWorldSummary[];
+  worldPlayerCount: number;
+  lastSavedAt: string | null;
   announcement: string | null;
+  secretCaption: { title: string; detail: string } | null;
   nearbyPrompt: string | null;
   muted: boolean;
 }
+
 

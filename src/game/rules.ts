@@ -12,6 +12,7 @@ import type {
   PlayerState,
   SkillId,
   StatKey,
+  WarriorCustomization,
   WeaponId,
 } from './types';
 
@@ -20,6 +21,13 @@ export const MOVE_SPEED = 148;
 export const JUMP_VELOCITY = -325;
 export const COYOTE_TIME = 0.13;
 export const JUMP_BUFFER_TIME = 0.14;
+
+export const DEFAULT_WARRIOR_CUSTOMIZATION: WarriorCustomization = {
+  cloakColor: '#be123c',
+  armorColor: '#cbd5e1',
+  visorColor: '#38bdf8',
+  plumeColor: '#fbbf24',
+};
 
 export function createInitialPlayer(): PlayerState {
   return {
@@ -42,6 +50,7 @@ export function createInitialPlayer(): PlayerState {
     unlockedWeapons: ['claymore', 'rapier'],
     skillSlots: ['blade_dash', 'candlefire_wave', 'stand_rush'],
     skillCooldowns: [0, 0, 0],
+    dashCooldown: 0,
     attackPhase: 'none',
     attackTimer: 0,
     comboStep: 0,
@@ -65,6 +74,7 @@ export function createInitialPlayer(): PlayerState {
       hp: 0,
       speed: 0,
     },
+    customization: { ...DEFAULT_WARRIOR_CUSTOMIZATION },
     highestCheckpointX: 68,
     highestCheckpointIndex: 0,
   };
@@ -209,10 +219,53 @@ export function stepPlayerPhysics(
   for (let i = 0; i < 3; i++) {
     player.skillCooldowns[i] = Math.max(0, player.skillCooldowns[i] - dt);
   }
+  player.dashCooldown = Math.max(0, player.dashCooldown - dt);
   const staminaRegen = 20 + player.stats.speed * 1.6;
   player.stamina = Math.min(player.maxStamina, player.stamina + staminaRegen * dt);
 
   return { jumped, landed };
+}
+
+export const DASH_COOLDOWN_SECONDS = 1.0;
+export const DASH_STAMINA_COST = 10;
+
+export function triggerPlayerDash(player: PlayerState): boolean {
+  if (player.dashCooldown > 0 || player.stamina < DASH_STAMINA_COST) return false;
+  player.stamina -= DASH_STAMINA_COST;
+  player.dashCooldown = DASH_COOLDOWN_SECONDS;
+  player.invulnTimer = Math.max(player.invulnTimer, 0.28);
+  player.vx = player.facing * (430 + player.stats.speed * 8);
+  player.vy = Math.min(player.vy, 0);
+  player.squashX = 1.25;
+  player.squashY = 0.8;
+  return true;
+}
+
+export function getMonsterLevelMultiplier(level: number): number {
+  return Number((1 + Math.max(0, level - 1) * 0.4).toFixed(2));
+}
+
+export const BOSS_STREAK_FOR_COOLDOWN = 5;
+export const BOSS_COOLDOWN_DURATION = 60;
+
+export function recordBossFightProgress(currentStreak: number): {
+  nextStreak: number;
+  cooldownSeconds: number;
+  triggeredCooldown: boolean;
+} {
+  const next = currentStreak + 1;
+  if (next >= BOSS_STREAK_FOR_COOLDOWN) {
+    return {
+      nextStreak: 0,
+      cooldownSeconds: BOSS_COOLDOWN_DURATION,
+      triggeredCooldown: true,
+    };
+  }
+  return {
+    nextStreak: next,
+    cooldownSeconds: 0,
+    triggeredCooldown: false,
+  };
 }
 
 export function startWeaponAttack(player: PlayerState): boolean {
@@ -253,7 +306,7 @@ export function calculateAttackDamage(
 ): number {
   const weapon = WEAPONS[player.equippedWeapon];
   const weaponOpMult = weapon.damageMultiplier ?? 1;
-  const comboBonus = 1 + (player.comboStep - 1) * 0.14;
+  const comboBonus = 1 + (Math.max(1, player.comboStep) - 1) * 0.14;
   const bossScaling = 1 + player.bossesDefeated * 0.06;
   const attackBonus = player.stats.attack * 3;
   const attackMult = 1 + player.stats.attack * 0.04;
@@ -447,4 +500,15 @@ export function grantKillStatPoints(
   }
   player.level = 1 + player.bossesDefeated * 2 + Math.floor(player.monstersSlain / 3);
   return pts;
+}
+
+export function updateWarriorCustomization(
+  player: PlayerState,
+  patch: Partial<WarriorCustomization>,
+): WarriorCustomization {
+  player.customization = {
+    ...player.customization,
+    ...patch,
+  };
+  return player.customization;
 }

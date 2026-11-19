@@ -1,23 +1,31 @@
 import React from 'react';
 import { SKILLS, WEAPONS } from '../game/data';
 import type { HudSnapshot, SkillId, StatKey } from '../game/types';
-import { PixelBossPortrait, PixelWarriorPortrait } from './PixelPortrait';
+import {
+  PixelBossPortrait,
+  PixelWarriorPortrait,
+  PixelWeaponIcon,
+} from './PixelPortrait';
 
 interface GameHudProps {
   hud: HudSnapshot;
   isTouchLayout: boolean;
   onOpenInventory: () => void;
+  onOpenSanctuary: () => void;
   onOpenMap: () => void;
   onOpenStatus: () => void;
+  onOpenSaves: () => void;
+  onOpenWorlds: () => void;
   onAllocateStat: (statKey: StatKey) => void;
   onTogglePause: () => void;
   onToggleMute: () => void;
   onToggleRotate: () => void;
   onTriggerSkill: (slot: 0 | 1 | 2) => void;
+  onDash: () => void;
   onCycleWeapon: () => void;
   onAdvanceDialogue: () => void;
   onVirtualKey: (
-    action: 'left' | 'right' | 'jump' | 'attack' | 'interact' | 'skill0' | 'skill1' | 'skill2',
+    action: 'left' | 'right' | 'jump' | 'dash' | 'attack' | 'interact' | 'skill0' | 'skill1' | 'skill2',
     pressed: boolean,
   ) => void;
 }
@@ -26,13 +34,17 @@ export const GameHud: React.FC<GameHudProps> = ({
   hud,
   isTouchLayout,
   onOpenInventory,
+  onOpenSanctuary,
   onOpenMap,
   onOpenStatus,
+  onOpenSaves,
+  onOpenWorlds,
   onAllocateStat,
   onTogglePause,
   onToggleMute,
   onToggleRotate,
   onTriggerSkill,
+  onDash,
   onCycleWeapon,
   onAdvanceDialogue,
   onVirtualKey,
@@ -139,33 +151,149 @@ export const GameHud: React.FC<GameHudProps> = ({
           </div>
         </div>
 
-        {/* Top-Center: Active JoJo Boss Health Bar */}
-        {hud.activeBoss && (
-          <div className="relative flex flex-col items-center bg-[#180a10]/94 border-2 border-amber-400/75 px-3 py-1 min-w-[210px] sm:min-w-[280px] max-w-[340px]">
-            <span className="absolute top-0 left-0 w-1 h-1 bg-amber-300" />
-            <span className="absolute top-0 right-0 w-1 h-1 bg-amber-300" />
-            <div className="flex items-center justify-between w-full gap-2 text-[11px] sm:text-xs font-display font-bold text-amber-100">
-              <span className="truncate">{hud.activeBoss.name}</span>
-              <span className="font-pixel-mono text-[10px] text-amber-300 shrink-0">
-                [{hud.activeBoss.standName}]
+        {/* Top-Center: Co-op Guest Lock + 5-Boss Cooldown + Star Platinum + Mega Boss Cutscene + Secret Caption + Boss Bar */}
+        <div className="flex flex-col items-center gap-1.5">
+          {hud.worldRole === 'guest' && (
+            <div
+              data-testid="coop-guest-badge"
+              className="bg-[#0b1b2b]/95 border-2 border-cyan-400 px-3 py-1 text-center shadow-[0_3px_12px_rgba(34,211,238,0.3)]"
+            >
+              <span className="font-pixel-mono text-[10px] font-bold text-cyan-200 tracking-wide">
+                CO-OP GUEST · {hud.worldHostName ? `${hud.worldHostName}'s` : hud.worldId} World · BOSSES LOCKED
               </span>
             </div>
-            <div className="w-full h-2 bg-[#2a1219] border border-amber-500/40 mt-1">
-              <div
-                className="h-full bg-[#e11d48] transition-[width] duration-200"
-                style={{
-                  width: `${Math.max(0, (hud.activeBoss.hp / hud.activeBoss.maxHp) * 100)}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Top-Right: Utility Icon Buttons & Online Count */}
+          {hud.bossCooldownSeconds > 0 && (
+            <div
+              data-testid="boss-cooldown-badge"
+              className="bg-[#181024]/95 border-2 border-violet-400 px-3 py-1 text-center shadow-[0_3px_12px_rgba(167,139,250,0.35)]"
+            >
+              <span className="font-pixel-mono text-[10px] font-bold text-violet-200 tracking-wide">
+                NO BOSSES: {hud.bossCooldownSeconds}s · 5-Boss Breather Cooldown Active
+              </span>
+            </div>
+          )}
+
+          {hud.starPlatinumActive && (
+            <div
+              data-testid="star-platinum-active-badge"
+              className="bg-[#1c0f2b]/95 border border-purple-300 px-2.5 py-0.5 text-center"
+            >
+              <span className="font-pixel-mono text-[10px] font-bold text-purple-200 tracking-wider">
+                ★ STAR PLATINUM · ORA ORA BARRAGE
+              </span>
+            </div>
+          )}
+
+          {hud.megaCutscene && (
+            <div
+              data-testid="mega-boss-cutscene"
+              className="flex items-center gap-3 bg-[#1a0514]/96 border-2 border-yellow-300 px-4 py-2 shadow-[0_6px_24px_rgba(244,63,94,0.65)] max-w-[420px]"
+            >
+              <PixelBossPortrait
+                bossIndex={901}
+                megaArchetype={hud.megaCutscene.archetype}
+                expression="wryyy"
+                size={44}
+              />
+              <div className="min-w-0">
+                <div className="font-pixel-mono text-[10px] font-bold tracking-widest text-rose-300">
+                  ⚠ DIMENSIONAL GLITCH BREACH · MEGA BOSS
+                </div>
+                <div className="font-display text-sm font-bold text-yellow-200 truncate">
+                  {hud.megaCutscene.name}
+                </div>
+                <div className="font-pixel-mono text-[10px] text-cyan-200 truncate">
+                  [{hud.megaCutscene.standName}] · {hud.megaCutscene.subtitle}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {hud.secretCaption && (
+            <div
+              data-testid="secret-discovery-caption"
+              className="relative bg-[#1b0b07]/96 border-2 border-amber-300 px-4 py-1.5 text-center shadow-[0_4px_16px_rgba(251,146,60,0.45)] max-w-[380px]"
+            >
+              <div className="font-pixel-mono text-[11px] font-bold tracking-wider text-amber-300">
+                ✦ {hud.secretCaption.title}
+              </div>
+              <div className="font-pixel-mono text-[10px] text-amber-100 mt-0.5 leading-snug">
+                {hud.secretCaption.detail}
+              </div>
+            </div>
+          )}
+
+          {hud.activeBoss && hud.bossCooldownSeconds <= 0 && (
+            <div className="relative flex flex-col items-center bg-[#180a10]/94 border-2 border-amber-400/75 px-3 py-1 min-w-[210px] sm:min-w-[280px] max-w-[340px]">
+              <span className="absolute top-0 left-0 w-1 h-1 bg-amber-300" />
+              <span className="absolute top-0 right-0 w-1 h-1 bg-amber-300" />
+              <div className="flex items-center justify-between w-full gap-2 text-[11px] sm:text-xs font-display font-bold text-amber-100">
+                <span className="truncate">{hud.activeBoss.name}</span>
+                <span className="font-pixel-mono text-[10px] text-amber-300 shrink-0">
+                  [{hud.activeBoss.standName}]
+                </span>
+              </div>
+              <div className="w-full h-2 bg-[#2a1219] border border-amber-500/40 mt-1">
+                <div
+                  className="h-full bg-[#e11d48] transition-[width] duration-200"
+                  style={{
+                    width: `${Math.max(0, (hud.activeBoss.hp / hud.activeBoss.maxHp) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Top-Right: Utility Icon Buttons & World / Save / Online Count */}
         <div className="flex items-center gap-1.5 pointer-events-auto">
-          <span className="hidden md:inline-block font-pixel-mono text-[11px] text-amber-200/80 mr-1.5">
-            Online: {hud.onlineCount}
+          <span className="hidden lg:inline-block font-pixel-mono text-[10px] text-amber-200/80 mr-1">
+            {hud.worldRole === 'host' ? `World ${hud.worldId}` : 'Guest'} · {hud.onlineCount} Online
           </span>
+          <button
+            type="button"
+            aria-label="Open Save and Load Menu"
+            title="Save / Load Game"
+            data-testid="open-saves-btn"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenSaves();
+            }}
+            className="px-2 h-9 flex items-center justify-center bg-[#14251d] border border-emerald-400/65 hover:border-emerald-200 font-pixel-mono text-[10px] font-bold text-emerald-200 cursor-pointer whitespace-nowrap"
+          >
+            SAVE
+          </button>
+          <button
+            type="button"
+            aria-label="Open Online Bastera Worlds"
+            title="Online Co-op Worlds"
+            data-testid="open-worlds-btn"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenWorlds();
+            }}
+            className="px-2 h-9 flex items-center justify-center bg-[#101e30] border border-cyan-400/65 hover:border-cyan-200 font-pixel-mono text-[10px] font-bold text-cyan-200 cursor-pointer whitespace-nowrap"
+          >
+            WORLDS ({hud.worldPlayerCount})
+          </button>
+          <button
+            type="button"
+            aria-label="Open Main Sanctuary Interface"
+            title="Sanctuary: Customize, Stats & Items [C]"
+            data-testid="open-sanctuary-btn"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenSanctuary();
+            }}
+            className="px-2.5 h-9 flex items-center justify-center bg-[#23121b] border border-amber-400/65 hover:border-amber-200 font-pixel-mono text-[10px] font-bold text-amber-200 cursor-pointer whitespace-nowrap"
+          >
+            SANCTUARY [C]
+          </button>
           <button
             type="button"
             aria-label="Open Inventory"
@@ -315,7 +443,11 @@ export const GameHud: React.FC<GameHudProps> = ({
           >
             {/* Miniature Pixel Portrait Box */}
             {hud.dialogue.portraitKind === 'warrior' ? (
-              <PixelWarriorPortrait weaponId={hud.equippedWeapon} size={28} />
+              <PixelWarriorPortrait
+                weaponId={hud.equippedWeapon}
+                customization={hud.customization}
+                size={28}
+              />
             ) : hud.dialogue.portraitKind === 'boss' && hud.activeBoss ? (
               <PixelBossPortrait bossIndex={hud.activeBoss.index} expression="smirk" size={28} />
             ) : (
@@ -390,14 +522,41 @@ export const GameHud: React.FC<GameHudProps> = ({
               }}
               tabIndex={-1}
               title="Click to cycle unlocked Sword Style"
-              className="px-2.5 py-1.5 bg-[#160e13]/95 border border-amber-500/45 hover:border-amber-300 text-left cursor-pointer"
+              className="px-2 py-1 bg-[#160e13]/95 border border-amber-500/45 hover:border-amber-300 text-left cursor-pointer flex items-center gap-2"
             >
-              <div className="text-[10px] font-pixel-mono text-amber-300 leading-none">
-                [J] {weapon.styleName}
+              <PixelWeaponIcon weaponId={hud.equippedWeapon} size={28} />
+              <div>
+                <div className="text-[10px] font-pixel-mono text-amber-300 leading-none">
+                  [J] {weapon.styleName}
+                  {(weapon.damageMultiplier ?? 1) > 1 ? ` · ${weapon.damageMultiplier}x` : ''}
+                </div>
+                <div className="text-[11px] font-semibold text-amber-50 whitespace-nowrap mt-0.5">
+                  {weapon.name.split(' ').slice(-2).join(' ')}
+                </div>
               </div>
-              <div className="text-[11px] font-semibold text-amber-50 whitespace-nowrap mt-0.5">
-                {weapon.name.split(' ').slice(-2).join(' ')}
-              </div>
+            </button>
+
+            <button
+              type="button"
+              data-testid="hud-dash-btn"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onDash();
+              }}
+              title="Quick Dash [Shift] (10 ST, 1.0s CD)"
+              className={`relative w-14 h-11 flex flex-col items-center justify-center border transition-colors cursor-pointer ${
+                hud.dashCooldown <= 0 && hud.stamina >= 10
+                  ? 'bg-[#121c2a]/95 border-cyan-400/80 hover:border-cyan-200 text-cyan-100'
+                  : 'bg-[#0c1118]/85 border-cyan-900/40 text-cyan-200/45'
+              }`}
+            >
+              <span className="text-[9px] font-pixel-mono text-cyan-300 leading-none">
+                [SHFT]
+              </span>
+              <span className="text-[10px] font-pixel-mono mt-1">
+                {hud.dashCooldown > 0 ? `${hud.dashCooldown.toFixed(1)}s` : 'DASH'}
+              </span>
             </button>
 
             {([0, 1, 2] as const).map((slotIdx) => {
@@ -405,23 +564,33 @@ export const GameHud: React.FC<GameHudProps> = ({
               const skill = SKILLS[skillId];
               const cd = hud.skillCooldowns[slotIdx];
               const ready = cd <= 0 && hud.stamina >= skill.staminaCost;
+              const isOra = skillId === 'stand_rush';
               return (
                 <button
                   key={slotIdx}
                   type="button"
+                  data-testid={`hud-skill-${slotIdx}`}
                   tabIndex={-1}
                   onClick={(e) => {
                     e.currentTarget.blur();
                     onTriggerSkill(slotIdx);
                   }}
                   title={`${skill.name} (${skill.staminaCost} Stam)`}
-                  className={`relative w-14 h-11 flex flex-col items-center justify-center border transition-colors cursor-pointer ${
-                    ready
-                      ? 'bg-[#1a1016]/95 border-amber-400/70 hover:border-amber-200 text-amber-50'
-                      : 'bg-[#100a0e]/85 border-amber-900/40 text-amber-200/45'
+                  className={`relative min-w-[60px] px-1.5 h-11 flex flex-col items-center justify-center border transition-colors cursor-pointer ${
+                    isOra && hud.starPlatinumActive
+                      ? 'bg-[#2a1242]/95 border-purple-300 text-purple-100 shadow-[0_0_12px_rgba(192,132,252,0.5)]'
+                      : ready
+                        ? isOra
+                          ? 'bg-[#1f1030]/95 border-purple-400/85 hover:border-purple-200 text-purple-50'
+                          : 'bg-[#1a1016]/95 border-amber-400/70 hover:border-amber-200 text-amber-50'
+                        : 'bg-[#100a0e]/85 border-amber-900/40 text-amber-200/45'
                   }`}
                 >
-                  <span className="text-[9px] font-pixel-mono text-amber-300 leading-none">
+                  <span
+                    className={`text-[9px] font-pixel-mono leading-none whitespace-nowrap ${
+                      isOra ? 'text-purple-300' : 'text-amber-300'
+                    }`}
+                  >
                     [{slotIdx + 1}] {skill.shortTag}
                   </span>
                   <span className="text-[10px] font-pixel-mono mt-1">

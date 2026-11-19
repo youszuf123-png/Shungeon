@@ -1,10 +1,5 @@
 import { gameAudio } from './audio';
 import {
-  buildJotaroAttackAnnouncement,
-  buildJotaroDialoguePrompt,
-  type JotaroVoicePrompt,
-} from './jotaroVoice';
-import {
   SKILLS,
   TOTAL_BOSSES,
   TOTAL_HIDDEN_PASSAGES,
@@ -12,17 +7,26 @@ import {
   getBiomeDisplayName,
 } from './data';
 import {
+  createMegaBossInstance,
+  pickMegaBossArchetype,
+  shouldTriggerMegaBossGlitch,
+} from './megaBoss';
+import {
   PIXEL_H,
   PIXEL_W,
   drawBiomeBackdrop,
   drawCandles,
+  drawDarkSanctumLighting,
   drawEnemy,
   drawInteractables,
   drawJoJoBoss,
+  drawMegaBossCutscene,
   drawPeer,
   drawPlatforms,
   drawPokemonBossStage,
   drawProjectiles,
+  drawStarPlatinumGuardian,
+  drawVolcanoPitChasm,
   drawWarrior,
 } from './pixelSprites';
 import {
@@ -49,13 +53,24 @@ import {
   createInitialInventory,
   createInitialPlayer,
   equipWeapon,
+  getMonsterLevelMultiplier,
   grantKillStatPoints,
+  recordBossFightProgress,
   rectsOverlap,
   startWeaponAttack,
   stepPlayerPhysics,
+  triggerPlayerDash,
   triggerSkillSlot,
+  updateWarriorCustomization,
   useInventoryItem,
 } from './rules';
+import {
+  BasteraSaveData,
+  canPlayerEngageBoss,
+  createSavePayload,
+  normalizeLoadedSave,
+  saveToLocalStorage,
+} from './saveSystem';
 import type {
   ActiveBoss,
   BiomeId,
@@ -65,12 +80,19 @@ import type {
   HudSnapshot,
   InteractableProp,
   InventoryItem,
+  MegaBossArchetype,
+  MegaCutsceneHud,
+  MegaSkillAnimStyle,
   MultiplayerPeer,
+  OnlineWorldSummary,
+  Platform,
   PlayerState,
   Projectile,
   SkillId,
   StatKey,
+  WarriorCustomization,
   WeaponId,
+  WorldRole,
 } from './types';
 import {
   CHUNK_WIDTH,
@@ -127,6 +149,9 @@ export class BasteraGameEngine {
   private dialogue: DialogueState | null = null;
   private announcement: string | null = null;
   private announcementTimer = 0;
+  private secretCaption: { title: string; detail: string } | null = null;
+  private secretCaptionTimer = 0;
+  private darkSanctumDiscovered = false;
 
   private camX = 0;
   private titlePanX = 0;
@@ -200,7 +225,39 @@ export class BasteraGameEngine {
   private bossBattle: BossBattleState | null = null;
   private bossEncounterCooldown = 0;
   private encounterFlashTimer = 0;
-  private lastJotaroPrompt: JotaroVoicePrompt | null = null;
+  private pendingSanctuaryCallback: (() => void) | null = null;
+  private postBossInputLockTimer = 0;
+
+  // Mega Boss glitch intrusion cutscene + Chunk 41 bridge volcano pit fall
+  private megaCutscene: {
+    archetype: MegaBossArchetype;
+    pendingBoss: ActiveBoss;
+    timer: number;
+    duration: number;
+  } | null = null;
+  private volcanoBridgeFallTriggered = false;
+  private volcanoBridgeFallTimer = 0;
+
+  // Multiplayer Co-op World Rooms & Saving
+  private worldId = 'LOCAL';
+  private ownWorldId = 'LOCAL';
+  private worldRole: WorldRole = 'host';
+  private worldHostName: string | null = null;
+  private isWorldPublic = true;
+  private onlineWorlds: OnlineWorldSummary[] = [];
+  private worldPlayerCount = 1;
+  private hostDefeatedBosses = new Set<number>();
+  private guestBossWarnCooldown = 0;
+  private lastSavedAt: string | null = null;
+
+  // Dash, Star Platinum ORA Barrage, 5-Boss 60s Cooldown & Frame Chunk Caches
+  private starPlatinumTimer = 0;
+  private starPlatinumTickTimer = 0;
+  private bossesFoughtStreak = 0;
+  private bossCooldownSeconds = 0;
+  private cachedActiveChunks: GeneratedChunk[] = [];
+  private cachedActivePlatforms: Platform[] = [];
+  private chunksDirty = true;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -225,7 +282,18 @@ export class BasteraGameEngine {
 
   public setModalPaused(paused: boolean): void {
     this.modalPaused = paused;
-    if (paused) this.heldKeys.clear();
+    if (paused) this.clearAllInputs(false);
+  }
+
+  private clearAllInputs(stopHorizontal = true): void {
+    this.heldKeys.clear();
+    this.justPressed.clear();
+    this.virtualInput.left = false;
+    this.virtualInput.right = false;
+    this.virtualInput.jumpHeld = false;
+    if (stopHorizontal) {
+      this.player.vx = 0;
+    }
   }
 
   public startLoop(): void {
@@ -264,10 +332,10 @@ export class BasteraGameEngine {
     document.body.dataset.state = bodyState;
     if (next === 'paused' || next === 'gameover' || next === 'victory' || next === 'title') {
       gameAudio.stopMusic();
-      this.heldKeys.clear();
+      this.clearAllInputs(true);
     } else if (next === 'playing') {
       gameAudio.unlock();
-      this.heldKeys.clear();
+      this.clearAllInputs(true);
       const activeBoss = this.getActiveNearbyBoss();
       gameAudio.startMusic(this.getCurrentBiome(), activeBoss?.def ?? null);
     }
@@ -286,24 +354,169 @@ export class BasteraGameEngine {
     this.bossEncounterCooldown = 0;
     this.encounterFlashTimer = 0;
     this.lastBossVoiceTriggered = -1;
+    this.secretCaption = null;
+    this.secretCaptionTimer = 0;
+    this.darkSanctumDiscovered = false;
+    this.pendingSanctuaryCallback = null;
+    this.megaCutscene = null;
+    this.volcanoBridgeFallTriggered = false;
+    this.volcanoBridgeFallTimer = 0;
+    this.postBossInputLockTimer = 0;
+    this.starPlatinumTimer = 0;
+    this.starPlatinumTickTimer = 0;
+    this.bossesFoughtStreak = 0;
+    this.bossCooldownSeconds = 0;
+    this.chunksDirty = true;
     this.ensureChunksAround(0);
     this.camX = 0;
 
     this.setStatus('playing');
+    this.syncHostWorldMeta();
     this.openDialogue(
       'Warrior',
       'warrior',
       '#fbbf24',
       [
         'Well, the royal dungeon locked the front door again. Time to fight 120 dramatic villains on an empty stomach.',
-        'Inspect thrones [F], smash cracked bricks [J], and try not to bleed on the nice red carpet.',
+        'Inspect thrones [F], smash cracked bricks [J], press [Shift] to Dash, and unleash Star Platinum ORA ORA [3]!',
       ],
+    );
+  }
+
+  public getSavePayload(saveId = 'autosave'): BasteraSaveData {
+    return createSavePayload({
+      saveId,
+      playerName: this.playerName,
+      biome: this.getCurrentBiome(),
+      player: this.player,
+      inventory: this.inventory,
+      defeatedBosses: this.defeatedBosses,
+      discoveredSecrets: this.discoveredSecrets,
+      openedChests: this.openedChests,
+      volcanoBridgeFallTriggered: this.volcanoBridgeFallTriggered,
+      darkSanctumDiscovered: this.darkSanctumDiscovered,
+      bossFoughtStreak: this.bossesFoughtStreak,
+      bossCooldownSeconds: Math.ceil(this.bossCooldownSeconds),
+    });
+  }
+
+  public async saveCurrentGame(saveId = 'autosave', silent = false): Promise<{ ok: boolean; savedAt: string }> {
+    const payload = this.getSavePayload(saveId);
+    saveToLocalStorage(payload);
+    this.lastSavedAt = payload.savedAt;
+    try {
+      const resp = await fetch('/api/saves', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok && !silent) {
+        this.showAnnouncement('Saved locally (offline backup).');
+      }
+    } catch {
+      // localStorage backup still persisted!
+    }
+    if (!silent) {
+      gameAudio.playSecretFound();
+      this.showAnnouncement(`Game saved (${payload.playerName} · Boss ${payload.player.bossesDefeated}/120)!`);
+    }
+    this.emitHud(true);
+    return { ok: true, savedAt: payload.savedAt };
+  }
+
+  public loadFromSave(rawSave: BasteraSaveData): boolean {
+    const clean = normalizeLoadedSave(rawSave);
+    if (!clean) return false;
+    this.playerName = clean.playerName;
+    this.player = clean.player;
+    this.inventory = clean.inventory;
+    this.defeatedBosses = new Set(clean.defeatedBosses);
+    this.discoveredSecrets = new Set(clean.discoveredSecrets);
+    this.openedChests = new Set(clean.openedChests);
+    this.volcanoBridgeFallTriggered = clean.volcanoBridgeFallTriggered;
+    this.darkSanctumDiscovered = clean.darkSanctumDiscovered;
+    this.bossesFoughtStreak = clean.bossFoughtStreak ?? 0;
+    this.bossCooldownSeconds = clean.bossCooldownSeconds ?? 0;
+    this.starPlatinumTimer = 0;
+    this.starPlatinumTickTimer = 0;
+    this.lastSavedAt = clean.savedAt;
+
+    this.chunks.clear();
+    this.chunksDirty = true;
+    this.projectiles = [];
+    this.bossBattle = null;
+    this.megaCutscene = null;
+    this.volcanoBridgeFallTimer = 0;
+    this.postBossInputLockTimer = 0.25;
+    this.bossEncounterCooldown = 1.5;
+    this.ensureChunksAround(this.player.x);
+    this.camX = Math.max(-640, this.player.x - PIXEL_W * 0.34);
+
+    if (this.worldRole === 'guest') {
+      this.leaveJoinedWorld();
+    } else {
+      this.syncHostWorldMeta();
+    }
+    this.setStatus('playing');
+    gameAudio.playSecretFound();
+    this.showAnnouncement(`Loaded ${clean.playerName}'s saved world!`);
+    this.emitHud(true);
+    return true;
+  }
+
+  public joinWorld(targetWorldId: string): void {
+    const clean = targetWorldId.trim().toUpperCase();
+    if (!clean) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.showAnnouncement('Multiplayer server offline — cannot join world.');
+      return;
+    }
+    this.ws.send(JSON.stringify({ type: 'world:join', worldId: clean }));
+  }
+
+  public leaveJoinedWorld(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.worldRole = 'host';
+      this.worldHostName = null;
+      this.worldId = this.ownWorldId;
+      this.emitHud(true);
+      return;
+    }
+    this.ws.send(JSON.stringify({ type: 'world:leave' }));
+  }
+
+  public setWorldPublic(isPublic: boolean): void {
+    this.isWorldPublic = isPublic;
+    this.syncHostWorldMeta();
+    this.emitHud(true);
+  }
+
+  public refreshOnlineWorlds(): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'world:list' }));
+    }
+  }
+
+  private syncHostWorldMeta(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(
+      JSON.stringify({
+        type: 'world:host',
+        hostName: this.playerName,
+        isPublic: this.isWorldPublic,
+        biome: this.getCurrentBiome(),
+        bossesDefeated: this.defeatedBosses.size,
+        defeatedBosses: Array.from(this.defeatedBosses),
+      }),
     );
   }
 
   public restartFromCheckpoint(): void {
     this.bossBattle = null;
+    this.megaCutscene = null;
     this.bossEncounterCooldown = 1.5;
+    this.postBossInputLockTimer = 0.35;
+    this.clearAllInputs(true);
     this.player.hp = this.player.maxHp;
     this.player.stamina = this.player.maxStamina;
     this.player.x = this.player.highestCheckpointX;
@@ -320,7 +533,10 @@ export class BasteraGameEngine {
     const target = cps[cpIndex];
     if (!target || !target.reached) return;
     this.bossBattle = null;
+    this.megaCutscene = null;
     this.bossEncounterCooldown = 1.5;
+    this.postBossInputLockTimer = 0.35;
+    this.clearAllInputs(true);
     this.player.x = target.x;
     this.player.y = FLOOR_Y - this.player.h - 4;
     this.player.vx = 0;
@@ -328,28 +544,59 @@ export class BasteraGameEngine {
     this.player.hp = this.player.maxHp;
     this.projectiles = [];
     this.ensureChunksAround(this.player.x);
-    this.camX = Math.max(0, this.player.x - PIXEL_W * 0.32);
+    this.camX = Math.max(-640, this.player.x - PIXEL_W * 0.32);
     this.setStatus('playing');
     this.emitHud();
   }
 
   public setPlayerName(name: string): void {
     const clean = name.trim().slice(0, 18);
-    if (clean) this.playerName = clean;
+    if (clean) {
+      this.playerName = clean;
+      this.syncHostWorldMeta();
+    }
   }
 
-  public triggerVirtualKey(action: 'left' | 'right' | 'jump' | 'attack' | 'interact' | 'skill0' | 'skill1' | 'skill2', pressed: boolean): void {
+  public triggerVirtualKey(
+    action: 'left' | 'right' | 'jump' | 'dash' | 'attack' | 'interact' | 'skill0' | 'skill1' | 'skill2',
+    pressed: boolean,
+  ): void {
     if (action === 'left') this.virtualInput.left = pressed;
     else if (action === 'right') this.virtualInput.right = pressed;
     else if (action === 'jump') {
       if (pressed && !this.virtualInput.jumpHeld) this.justPressed.add('Space');
       this.virtualInput.jumpHeld = pressed;
     } else if (pressed) {
+      if (action === 'dash') this.justPressed.add('ShiftLeft');
       if (action === 'attack') this.justPressed.add('KeyJ');
       if (action === 'interact') this.justPressed.add('KeyF');
       if (action === 'skill0') this.justPressed.add('Digit1');
       if (action === 'skill1') this.justPressed.add('Digit2');
       if (action === 'skill2') this.justPressed.add('Digit3');
+    }
+  }
+
+  public performDash(): void {
+    if (
+      this.status !== 'playing' ||
+      this.modalPaused ||
+      this.bossBattle ||
+      this.megaCutscene ||
+      this.volcanoBridgeFallTimer > 0
+    ) {
+      return;
+    }
+    if (this.heldKeys.has('ArrowLeft') || this.heldKeys.has('KeyA') || this.virtualInput.left) {
+      this.player.facing = -1;
+    } else if (this.heldKeys.has('ArrowRight') || this.heldKeys.has('KeyD') || this.virtualInput.right) {
+      this.player.facing = 1;
+    }
+    if (triggerPlayerDash(this.player)) {
+      gameAudio.playSkill('blade_dash');
+      this.spawnAfterimage('#fbbf24');
+      this.spawnBurst(this.player.x + 8, this.player.y + 14, 10, '#fbbf24');
+      this.speedLineTimer = 0.28;
+      this.emitHud();
     }
   }
 
@@ -401,6 +648,11 @@ export class BasteraGameEngine {
     return true;
   }
 
+  public setWarriorCustomization(patch: Partial<WarriorCustomization>): void {
+    updateWarriorCustomization(this.player, patch);
+    this.emitHud(true);
+  }
+
   public triggerSkillButton(slotIndex: 0 | 1 | 2): void {
     if (this.status !== 'playing') return;
     if (this.bossBattle) {
@@ -410,36 +662,12 @@ export class BasteraGameEngine {
     this.executeSkill(slotIndex);
   }
 
-  private triggerBattleJotaroVoice(prompt: JotaroVoicePrompt): void {
-    if (!this.bossBattle) return;
-    this.lastJotaroPrompt = prompt;
-    this.bossBattle.jotaroLine = prompt.captionLine;
-    this.bossBattle.jotaroVoiceError = null;
-    gameAudio.announceJotaroBattleVoice(prompt, (status, err) => {
-      if (!this.bossBattle) return;
-      this.bossBattle.jotaroVoiceStatus = status;
-      this.bossBattle.jotaroVoiceError = err;
-      this.emitHud(true);
-    });
-  }
-
   public battleAttackWeapon(): void {
     if (!this.bossBattle || this.status !== 'playing') return;
     const res = resolvePlayerBattleSword(this.bossBattle, this.player);
     if (res.ok) {
-      const weapon = WEAPONS[this.player.equippedWeapon];
       gameAudio.playSwordSlash(this.player.equippedWeapon, 1);
       gameAudio.playHit(false);
-      this.triggerBattleJotaroVoice(
-        buildJotaroAttackAnnouncement({
-          kind: 'player_weapon',
-          attackName: weapon.name,
-          weaponId: weapon.id,
-          weaponStyle: weapon.styleName,
-          bossName: this.bossBattle.boss.def.name,
-          standName: this.bossBattle.boss.def.standName,
-        }),
-      );
       this.trauma = Math.min(1, this.trauma + 0.35);
       this.emitHud(true);
     }
@@ -449,18 +677,8 @@ export class BasteraGameEngine {
     if (!this.bossBattle || this.status !== 'playing') return;
     const res = resolvePlayerBattleSkill(this.bossBattle, this.player, slotIndex);
     if (res.ok) {
-      const skill = SKILLS[res.skillId];
-      gameAudio.playSkill(res.skillId, false);
+      gameAudio.playSkill(res.skillId);
       gameAudio.playSlashClaw(true);
-      this.triggerBattleJotaroVoice(
-        buildJotaroAttackAnnouncement({
-          kind: 'player_skill',
-          attackName: skill.name,
-          skillId: res.skillId,
-          bossName: this.bossBattle.boss.def.name,
-          standName: this.bossBattle.boss.def.standName,
-        }),
-      );
       this.trauma = Math.min(1, this.trauma + 0.45);
       this.emitHud(true);
     } else if (res.reason) {
@@ -483,15 +701,34 @@ export class BasteraGameEngine {
     if (!this.bossBattle || this.status !== 'playing') return;
     if (startBattleRun(this.bossBattle)) {
       gameAudio.playJump();
-      this.triggerBattleJotaroVoice(
-        buildJotaroAttackAnnouncement({
-          kind: 'retreat',
-          attackName: 'Nigerundayo',
-          bossName: this.bossBattle.boss.def.name,
-          standName: this.bossBattle.boss.def.standName,
-        }),
-      );
       this.emitHud(true);
+    }
+  }
+
+  public battleRetreatToSanctuary(onOpened?: () => void): void {
+    if (!this.bossBattle || this.status !== 'playing') return;
+    this.pendingSanctuaryCallback = onOpened ?? null;
+    if (startBattleRun(this.bossBattle)) {
+      gameAudio.playJump();
+      this.emitHud(true);
+    } else if (this.bossBattle.phase === 'run_anim') {
+      // Already retreating — callback will trigger at end of run_anim
+      this.emitHud(true);
+    } else {
+      const bossX = this.bossBattle.boss.x;
+      this.bossBattle = null;
+      this.bossEncounterCooldown = 4.0;
+      this.postBossInputLockTimer = 0.45;
+      this.clearAllInputs(true);
+      this.player.x = Math.max(24, bossX - 210);
+      this.player.y = FLOOR_Y - this.player.h - 4;
+      this.camX = Math.max(-640, this.player.x - PIXEL_W * 0.34);
+      this.completeBossEncounterProgress();
+      gameAudio.startMusic(this.getCurrentBiome(), null);
+      this.emitHud(true);
+      const cb = this.pendingSanctuaryCallback;
+      this.pendingSanctuaryCallback = null;
+      cb?.();
     }
   }
 
@@ -503,20 +740,6 @@ export class BasteraGameEngine {
     }
   }
 
-  public battleReplayVoice(): void {
-    if (!this.bossBattle) return;
-    gameAudio.unlock();
-    const prompt =
-      this.lastJotaroPrompt ??
-      buildJotaroAttackAnnouncement({
-        kind: 'boss_intro',
-        attackName: this.bossBattle.boss.def.attackName,
-        bossName: this.bossBattle.boss.def.name,
-        standName: this.bossBattle.boss.def.standName,
-      });
-    this.triggerBattleJotaroVoice(prompt);
-  }
-
   public advanceDialogue(): void {
     if (!this.dialogue) return;
     const currentLine = this.dialogue.lines[this.dialogue.lineIndex] || '';
@@ -526,12 +749,6 @@ export class BasteraGameEngine {
       this.dialogue.lineIndex += 1;
       this.dialogue.charIndex = 0;
       this.dialogue.charTimer = 0;
-      const nextLine = this.dialogue.lines[this.dialogue.lineIndex];
-      if (nextLine) {
-        gameAudio.speakJotaroDialogue(
-          buildJotaroDialoguePrompt(nextLine, this.dialogue.portraitKind),
-        );
-      }
     } else {
       this.dialogue = null;
     }
@@ -553,6 +770,7 @@ export class BasteraGameEngine {
     portraitColor: string,
     lines: string[],
   ): void {
+    this.clearAllInputs(true);
     this.dialogue = {
       speaker,
       portraitKind,
@@ -563,9 +781,6 @@ export class BasteraGameEngine {
       charTimer: 0,
       active: true,
     };
-    if (lines[0]) {
-      gameAudio.speakJotaroDialogue(buildJotaroDialoguePrompt(lines[0], portraitKind));
-    }
     this.emitHud();
   }
 
@@ -575,22 +790,40 @@ export class BasteraGameEngine {
     this.emitHud();
   }
 
+  private showSecretCaption(title: string, detail: string): void {
+    this.secretCaption = { title, detail };
+    this.secretCaptionTimer = 4.6;
+    this.emitHud(true);
+  }
+
   private getCurrentChunkIndex(): number {
-    return Math.max(0, Math.floor(this.player.x / CHUNK_WIDTH));
+    return Math.floor(this.player.x / CHUNK_WIDTH);
   }
 
   private getCurrentBiome(): BiomeId {
     return getBiomeForChunk(this.getCurrentChunkIndex());
   }
 
+  private getEffectiveDefeatedBosses(): Set<number> {
+    return this.worldRole === 'guest' ? this.hostDefeatedBosses : this.defeatedBosses;
+  }
+
   private ensureChunksAround(worldX: number): void {
-    const center = Math.max(0, Math.floor(worldX / CHUNK_WIDTH));
-    const minC = Math.max(0, center - 2);
-    const maxC = center + 3;
+    const center = Math.floor(worldX / CHUNK_WIDTH);
+    const minC = Math.max(-1, center - 1);
+    const maxC = center + 2;
+    const defeatedSet = this.getEffectiveDefeatedBosses();
+    const monsterMult = getMonsterLevelMultiplier(this.player.level);
+    let changed = false;
+
     for (let c = minC; c <= maxC; c++) {
       if (!this.chunks.has(c)) {
         const chunk = generateChunk(c);
-        if (chunk.boss && this.defeatedBosses.has(chunk.boss.def.index)) {
+        for (const en of chunk.enemies) {
+          en.maxHp = Math.round(en.maxHp * monsterMult);
+          en.hp = en.maxHp;
+        }
+        if (chunk.boss && defeatedSet.has(chunk.boss.def.index)) {
           chunk.boss.defeated = true;
           chunk.boss.hp = 0;
           chunk.boss.state = 'ko';
@@ -604,17 +837,41 @@ export class BasteraGameEngine {
           }
         }
         this.chunks.set(c, chunk);
+        changed = true;
       }
     }
     for (const key of this.chunks.keys()) {
       if (key < minC - 1 || key > maxC + 1) {
         this.chunks.delete(key);
+        changed = true;
       }
+    }
+    if (changed) {
+      this.chunksDirty = true;
     }
   }
 
+  private rebuildChunkCachesIfNeeded(): void {
+    if (!this.chunksDirty) return;
+    this.chunksDirty = false;
+    this.cachedActiveChunks = Array.from(this.chunks.values());
+    const plats: Platform[] = [];
+    for (const ch of this.cachedActiveChunks) {
+      for (const p of ch.platforms) {
+        plats.push(p);
+      }
+    }
+    this.cachedActivePlatforms = plats;
+  }
+
   private getActiveChunks(): GeneratedChunk[] {
-    return Array.from(this.chunks.values());
+    this.rebuildChunkCachesIfNeeded();
+    return this.cachedActiveChunks;
+  }
+
+  private getActivePlatforms(): Platform[] {
+    this.rebuildChunkCachesIfNeeded();
+    return this.cachedActivePlatforms;
   }
 
   private getActiveNearbyBoss(): ActiveBoss | null {
@@ -628,6 +885,31 @@ export class BasteraGameEngine {
     return null;
   }
 
+  private completeBossEncounterProgress(): void {
+    const res = recordBossFightProgress(this.bossesFoughtStreak);
+    this.bossesFoughtStreak = res.nextStreak;
+    if (res.triggeredCooldown) {
+      this.bossCooldownSeconds = res.cooldownSeconds;
+      this.showAnnouncement(
+        `5 Bosses Fought! ${res.cooldownSeconds}s Boss Cooldown Active — No bosses for 1 minute!`,
+      );
+    }
+  }
+
+  private scaleLiveEnemiesOnLevelUp(prevLevel: number, nextLevel: number): void {
+    if (nextLevel <= prevLevel) return;
+    const prevMult = getMonsterLevelMultiplier(prevLevel);
+    const nextMult = getMonsterLevelMultiplier(nextLevel);
+    const ratio = nextMult / Math.max(0.1, prevMult);
+    for (const ch of this.chunks.values()) {
+      for (const en of ch.enemies) {
+        if (en.state === 'ko') continue;
+        en.maxHp = Math.max(en.maxHp + 1, Math.round(en.maxHp * ratio));
+        en.hp = Math.min(en.maxHp, Math.max(en.hp + 1, Math.round(en.hp * ratio)));
+      }
+    }
+  }
+
   private update(dt: number): void {
     this.simTime += dt;
 
@@ -635,6 +917,14 @@ export class BasteraGameEngine {
       this.announcementTimer = Math.max(0, this.announcementTimer - dt);
       if (this.announcementTimer === 0) {
         this.announcement = null;
+        this.emitHud();
+      }
+    }
+
+    if (this.secretCaptionTimer > 0) {
+      this.secretCaptionTimer = Math.max(0, this.secretCaptionTimer - dt);
+      if (this.secretCaptionTimer === 0) {
+        this.secretCaption = null;
         this.emitHud();
       }
     }
@@ -654,11 +944,32 @@ export class BasteraGameEngine {
 
     this.speedLineTimer = Math.max(0, this.speedLineTimer - dt);
     this.bossEncounterCooldown = Math.max(0, this.bossEncounterCooldown - dt);
+    const prevBossCdCeil = Math.ceil(this.bossCooldownSeconds);
+    this.bossCooldownSeconds = Math.max(0, this.bossCooldownSeconds - dt);
+    if (prevBossCdCeil > 0 && Math.ceil(this.bossCooldownSeconds) === 0) {
+      this.showAnnouncement('Boss Cooldown Expired — Bosses may challenge you again!');
+    }
     this.encounterFlashTimer = Math.max(0, this.encounterFlashTimer - dt);
+    this.guestBossWarnCooldown = Math.max(0, this.guestBossWarnCooldown - dt);
     this.updateAmbientMotes(dt);
 
     // Trauma shake decay in real dt
     this.trauma = Math.max(0, this.trauma - dt * 2.4);
+
+    // Mega Boss Glitch-Crash Cutscene overrides exploration while active
+    if (this.megaCutscene) {
+      this.clearAllInputs(true);
+      this.megaCutscene.timer = Math.max(0, this.megaCutscene.timer - dt);
+      if (this.megaCutscene.timer <= 0) {
+        const pending = this.megaCutscene.pendingBoss;
+        this.megaCutscene = null;
+        this.enterBossBattle(pending);
+      } else {
+        this.emitHud();
+      }
+      this.justPressed.clear();
+      return;
+    }
 
     // Pokemon-style Boss Battle Mode overrides exploration when engaged
     if (this.bossBattle) {
@@ -667,7 +978,60 @@ export class BasteraGameEngine {
       return;
     }
 
-    // Dialogue typewriter progression (no letter blips for JJBA boss voicelines—full voice plays!)
+    // Chunk 41 Bridge Slip & Fall into Volcano Pit sequence
+    const bridgeEntryX = 41 * CHUNK_WIDTH + 54;
+    if (!this.volcanoBridgeFallTriggered && this.player.x >= bridgeEntryX && this.player.y >= FLOOR_Y - 64) {
+      this.volcanoBridgeFallTriggered = true;
+      this.volcanoBridgeFallTimer = 1.75;
+      this.clearAllInputs(true);
+      this.player.vx = 24;
+      this.player.vy = 110;
+      const c41 = this.chunks.get(41);
+      if (c41) {
+        c41.platforms = c41.platforms.filter((p) => p.id !== 'bridge_41_slip');
+        this.chunksDirty = true;
+      }
+      this.trauma = 0.65;
+      this.spawnBurst(this.player.x + 8, this.player.y + 18, 20, '#fb923c');
+      this.showAnnouncement('THE BRIDGE CRUMBLED! Slipping into the Volcano Pit!');
+    }
+
+    if (this.volcanoBridgeFallTimer > 0) {
+      this.clearAllInputs(false);
+      this.volcanoBridgeFallTimer = Math.max(0, this.volcanoBridgeFallTimer - dt);
+      this.player.x += 24 * dt;
+      this.player.y = Math.min(FLOOR_Y + 6, this.player.y + 72 * dt);
+      if (Math.floor(this.simTime * 20) % 2 === 0) {
+        this.spawnBurst(this.player.x + 8, this.player.y + 16, 4, '#f97316');
+      }
+      this.camX += (this.player.x - PIXEL_W * 0.34 - this.camX) * Math.min(1, 9 * dt);
+      this.updateParticles(dt);
+      if (this.volcanoBridgeFallTimer === 0) {
+        this.player.x = 41 * CHUNK_WIDTH + 215;
+        this.player.y = FLOOR_Y - this.player.h;
+        this.clearAllInputs(true);
+        this.player.hp = Math.max(1, this.player.hp - 10);
+        this.trauma = 0.7;
+        gameAudio.playHit(true);
+        this.showSecretCaption(
+          'VOLCANO HELL CITADEL',
+          'You slipped off the bridge and plunged into the molten volcanic abyss! Survive 40 Volcanic Bosses!',
+        );
+        this.openDialogue(
+          'Warrior',
+          'warrior',
+          '#fb923c',
+          [
+            'Of course the castle bridge dropped me straight into a boiling volcano pit. My armor boots are smoking!',
+            'Brace yourself — 40 Volcanic Bosses rule these basalt halls!',
+          ],
+        );
+      }
+      this.justPressed.clear();
+      return;
+    }
+
+    // Dialogue typewriter progression (no TTS/voice anywhere; subtle chip blips for non-boss)
     if (this.dialogue) {
       const line = this.dialogue.lines[this.dialogue.lineIndex] || '';
       if (this.dialogue.charIndex < line.length) {
@@ -718,22 +1082,34 @@ export class BasteraGameEngine {
       this.useItem('crimson_vial');
     }
 
+    // Bulletproof post-bossfight lock window prevents stray carried velocity or stale key presses
+    if (this.postBossInputLockTimer > 0) {
+      this.postBossInputLockTimer = Math.max(0, this.postBossInputLockTimer - dt);
+      this.clearAllInputs(true);
+    } else if (this.justPressed.has('ShiftLeft') || this.justPressed.has('ShiftRight')) {
+      this.performDash();
+    }
+
     const left =
-      this.heldKeys.has('ArrowLeft') || this.heldKeys.has('KeyA') || this.virtualInput.left;
+      this.postBossInputLockTimer <= 0 &&
+      (this.heldKeys.has('ArrowLeft') || this.heldKeys.has('KeyA') || this.virtualInput.left);
     const right =
-      this.heldKeys.has('ArrowRight') || this.heldKeys.has('KeyD') || this.virtualInput.right;
+      this.postBossInputLockTimer <= 0 &&
+      (this.heldKeys.has('ArrowRight') || this.heldKeys.has('KeyD') || this.virtualInput.right);
     const jumpHeld =
-      this.heldKeys.has('Space') ||
-      this.heldKeys.has('ArrowUp') ||
-      this.heldKeys.has('KeyW') ||
-      this.virtualInput.jumpHeld;
+      this.postBossInputLockTimer <= 0 &&
+      (this.heldKeys.has('Space') ||
+        this.heldKeys.has('ArrowUp') ||
+        this.heldKeys.has('KeyW') ||
+        this.virtualInput.jumpHeld);
     const jumpJustPressed =
-      this.justPressed.has('Space') ||
-      this.justPressed.has('ArrowUp') ||
-      this.justPressed.has('KeyW');
+      this.postBossInputLockTimer <= 0 &&
+      (this.justPressed.has('Space') ||
+        this.justPressed.has('ArrowUp') ||
+        this.justPressed.has('KeyW'));
 
     const activeChunks = this.getActiveChunks();
-    const allPlatforms = activeChunks.flatMap((c) => c.platforms);
+    const allPlatforms = this.getActivePlatforms();
 
     const prevWalkCycle = this.player.walkCycle;
     const phys = stepPlayerPhysics(
@@ -760,42 +1136,74 @@ export class BasteraGameEngine {
       this.spawnBurst(this.player.x + 8, this.player.y + this.player.h, 4, '#94a3b8');
     }
 
-    // Update sword attack phases
+    // Update sword attack phases & Star Platinum ORA ORA guardian barrage
     this.stepAttackPhase(dt, activeChunks);
+    if (this.starPlatinumTimer > 0) {
+      this.starPlatinumTimer = Math.max(0, this.starPlatinumTimer - dt);
+      this.starPlatinumTickTimer -= dt;
+      if (this.starPlatinumTickTimer <= 0) {
+        this.starPlatinumTickTimer = 0.18;
+        this.resolveStarPlatinumTick(activeChunks);
+      }
+      if (this.starPlatinumTimer === 0) {
+        this.emitHud();
+      }
+    }
 
     // Check automatic triggers (floor pressure plates & checkpoints)
     this.checkPassiveTriggers(activeChunks);
 
-    // Stream chunks & update camera smoothly
+    // Secret Dark Sanctum discovery behind Checkpoint 1
+    if (this.player.x <= -32 && !this.darkSanctumDiscovered) {
+      this.darkSanctumDiscovered = true;
+      gameAudio.playSecretFound();
+      this.spawnBurst(this.player.x + 8, this.player.y + 10, 18, '#fb923c');
+      this.showSecretCaption(
+        'SECRET DISCOVERED: DARK ABYSSAL SANCTUM',
+        'You slipped behind Checkpoint 1 into the forgotten shadow vault!',
+      );
+    }
+
+    // Stream chunks & update camera smoothly (allows panning into chunk -1 at x < 0)
     this.ensureChunksAround(this.player.x);
-    const targetCamX = Math.max(0, this.player.x - PIXEL_W * 0.34);
+    const targetCamX = Math.max(-640, this.player.x - PIXEL_W * 0.34);
     this.camX += (targetCamX - this.camX) * Math.min(1, 9 * dt);
 
-    // Update enemies & boss AI
+    // Update enemies & boss AI (bosses stand down during 60s 5-boss cooldown)
     const frozen = this.player.chronoFreezeTimer > 0;
     this.stepEnemies(activeChunks, dt, frozen);
-    this.stepBosses(activeChunks, dt, frozen);
+    if (this.bossCooldownSeconds <= 0) {
+      this.stepBosses(activeChunks, dt, frozen);
+    }
     this.stepProjectiles(activeChunks, dt, frozen);
     this.updateParticles(dt);
 
-    // Trigger Pokemon-style Boss Encounter when approaching an undefeated JoJo boss!
+    // Trigger Pokemon-style Boss Encounter ONLY when World Host and no 60s boss cooldown active
     const nearbyBoss = this.getActiveNearbyBoss();
     if (
       nearbyBoss &&
       !nearbyBoss.defeated &&
       this.bossEncounterCooldown <= 0 &&
+      this.bossCooldownSeconds <= 0 &&
       Math.abs(this.player.x - nearbyBoss.x) < 165
     ) {
-      this.enterBossBattle(nearbyBoss);
-      this.justPressed.clear();
-      return;
+      if (canPlayerEngageBoss(this.worldRole)) {
+        this.enterBossBattle(nearbyBoss);
+        this.justPressed.clear();
+        return;
+      } else if (this.guestBossWarnCooldown <= 0) {
+        this.guestBossWarnCooldown = 3.5;
+        this.showAnnouncement('Co-op Guest: Only the World Host can fight bosses!');
+      }
     }
 
-    gameAudio.startMusic(this.getCurrentBiome(), nearbyBoss?.def ?? null);
-    if (nearbyBoss && this.lastBossVoiceTriggered !== nearbyBoss.def.index) {
+    gameAudio.startMusic(
+      this.getCurrentBiome(),
+      this.bossCooldownSeconds > 0 ? null : (nearbyBoss?.def ?? null),
+    );
+    if (nearbyBoss && this.bossCooldownSeconds <= 0 && this.lastBossVoiceTriggered !== nearbyBoss.def.index) {
       this.lastBossVoiceTriggered = nearbyBoss.def.index;
       this.speedLineTimer = 0.55;
-      gameAudio.playBossVoiceCue(nearbyBoss.def, 'intro');
     }
 
     // Network multiplayer sync at ~12 Hz
@@ -818,29 +1226,23 @@ export class BasteraGameEngine {
   private enterBossBattle(boss: ActiveBoss): void {
     this.dialogue = null;
     this.projectiles = [];
-    this.heldKeys.clear();
-    this.player.vx = 0;
+    this.clearAllInputs(true);
+    this.player.attackPhase = 'none';
+    this.player.walkCycle = 0;
     this.encounterFlashTimer = 0.35;
     this.speedLineTimer = 0.65;
     this.bossBattle = createBossBattleState(boss);
     this.lastBossVoiceTriggered = boss.def.index;
     gameAudio.playBattleEncounterStinger();
     gameAudio.startMusic(this.getCurrentBiome(), boss.def);
-
-    const introPrompt = buildJotaroAttackAnnouncement({
-      kind: 'boss_intro',
-      attackName: boss.def.attackName,
-      bossName: boss.def.name,
-      standName: boss.def.standName,
-    });
-    this.triggerBattleJotaroVoice(introPrompt);
-
     this.emitHud(true);
   }
 
   private stepBossBattle(dt: number): void {
     const b = this.bossBattle;
     if (!b) return;
+
+    this.clearAllInputs(true);
 
     b.phaseTimer = Math.max(0, b.phaseTimer - dt);
     const prog =
@@ -866,29 +1268,18 @@ export class BasteraGameEngine {
         b.speaker = b.boss.def.name;
         b.message = b.boss.def.defeatLine;
         this.trauma = 0.7;
-        this.triggerBattleJotaroVoice(
-          buildJotaroAttackAnnouncement({
-            kind: 'boss_defeat',
-            attackName: b.boss.def.attackName,
-            bossName: b.boss.def.name,
-            standName: b.boss.def.standName,
-          }),
-        );
         this.emitHud(true);
       } else {
         const turn = triggerBossCounterTurn(b, this.player);
         if (!turn.skippedByFreeze) {
-          this.trauma = 0.55;
-          gameAudio.playSlashClaw(true);
+          this.trauma = b.boss.def.isMegaBoss ? 0.8 : 0.55;
+          const activeFx = (b as { slashFx: { style?: string } | null }).slashFx;
+          if (b.boss.def.isMegaBoss && activeFx?.style) {
+            gameAudio.playMegaSkillSfx(activeFx.style as MegaSkillAnimStyle);
+          } else {
+            gameAudio.playSlashClaw(true);
+          }
           gameAudio.playHit(true);
-          this.triggerBattleJotaroVoice(
-            buildJotaroAttackAnnouncement({
-              kind: 'boss_attack',
-              attackName: b.boss.def.attackName,
-              bossName: b.boss.def.name,
-              standName: b.boss.def.standName,
-            }),
-          );
         }
         this.emitHud(true);
       }
@@ -896,33 +1287,53 @@ export class BasteraGameEngine {
       b.slashFx = null;
       if (b.pendingOutcome === 'defeat' || this.player.hp <= 0) {
         this.bossBattle = null;
+        this.postBossInputLockTimer = 0.45;
+        this.clearAllInputs(true);
         this.setStatus('gameover');
         return;
       }
       b.turnCount += 1;
       b.phase = 'menu';
       b.speaker = 'Battle';
-      b.message = `Choose your action! (Fight, Potions, Run, or Escape)`;
+      b.message = `Choose your action! (Fight, Potions, Retreat, or Escape)`;
       this.emitHud(true);
     } else if (b.phase === 'run_anim') {
       const bossX = b.boss.x;
       this.bossBattle = null;
-      this.bossEncounterCooldown = 3.5;
+      this.bossEncounterCooldown = 4.0;
+      this.postBossInputLockTimer = 0.45;
+      this.clearAllInputs(true);
+      this.player.walkCycle = 0;
       this.player.x = Math.max(24, bossX - 210);
       this.player.y = FLOOR_Y - this.player.h - 4;
-      this.player.vx = 0;
-      this.camX = Math.max(0, this.player.x - PIXEL_W * 0.34);
+      this.camX = Math.max(-640, this.player.x - PIXEL_W * 0.34);
+      this.completeBossEncounterProgress();
       gameAudio.startMusic(this.getCurrentBiome(), null);
-      this.showAnnouncement('Tactical retreat! Back outside boss range.');
+      if (this.bossCooldownSeconds <= 0) {
+        this.showAnnouncement('Retreated safely to your Main Sanctuary Interface.');
+      }
       this.emitHud(true);
+      const cb = this.pendingSanctuaryCallback;
+      this.pendingSanctuaryCallback = null;
+      cb?.();
     } else if (b.phase === 'escape_anim') {
       this.bossBattle = null;
+      this.postBossInputLockTimer = 0.45;
+      this.clearAllInputs(true);
+      this.player.walkCycle = 0;
       this.restartFromCheckpoint();
-      this.showAnnouncement('Escaped safely back to last Checkpoint!');
+      this.completeBossEncounterProgress();
+      if (this.bossCooldownSeconds <= 0) {
+        this.showAnnouncement('Escaped safely back to last Checkpoint!');
+      }
       this.emitHud(true);
     } else if (b.phase === 'victory') {
       const defeatedBoss = b.boss;
       this.bossBattle = null;
+      this.postBossInputLockTimer = 0.45;
+      this.clearAllInputs(true);
+      this.player.attackPhase = 'none';
+      this.player.walkCycle = 0;
       this.onBossDefeated(defeatedBoss);
       this.emitHud(true);
     }
@@ -938,20 +1349,21 @@ export class BasteraGameEngine {
       this.player.attackTimer = weapon.active;
       this.resolveMeleeHits(chunks, 1);
 
-      // Arcane Breaker & Iaido styles fire a short slash wave!
-      if (weapon.id === 'runeblade' || weapon.id === 'katana') {
+      // Arcane Breaker, Iaido, & OP Fire Sword launch slash waves!
+      if (weapon.id === 'runeblade' || weapon.id === 'katana' || weapon.id === 'fire_sword') {
+        const isFireSword = weapon.id === 'fire_sword';
         this.projectiles.push({
           id: `sw_${this.simTime}`,
           x: this.player.x + (this.player.facing === 1 ? 20 : -4),
           y: this.player.y + 12,
-          vx: this.player.facing * 240,
+          vx: this.player.facing * (isFireSword ? 265 : 240),
           vy: 0,
-          radius: 8,
-          damage: Math.round(calculateAttackDamage(this.player, 0.7)),
+          radius: isFireSword ? 10 : 8,
+          damage: Math.round(calculateAttackDamage(this.player, isFireSword ? 0.85 : 0.7)),
           fromPlayer: true,
-          color: weapon.accentColor,
-          life: 0.55,
-          kind: 'slash_wave',
+          color: isFireSword ? '#fb923c' : weapon.accentColor,
+          life: isFireSword ? 0.65 : 0.55,
+          kind: isFireSword ? 'fireball' : 'slash_wave',
         });
       }
     } else if (this.player.attackPhase === 'active' && this.player.attackTimer <= 0) {
@@ -1002,12 +1414,19 @@ export class BasteraGameEngine {
       if (ch.boss && !ch.boss.defeated) {
         const b = ch.boss;
         if (rectsOverlap(hb.x, hb.y, hb.w, hb.h, b.x, b.y, b.w, b.h)) {
-          const res = applyDamageToBoss(b, dmg, kb);
-          this.spawnFloatingText(b.x + b.w / 2, b.y - 6, `${dmg}`, '#fde047');
-          this.spawnBurst(b.x + b.w / 2, b.y + 16, 14, b.def.auraColor);
-          landedHit = true;
-          if (res.defeatedNow) {
-            this.onBossDefeated(b);
+          if (!canPlayerEngageBoss(this.worldRole)) {
+            if (this.guestBossWarnCooldown <= 0) {
+              this.guestBossWarnCooldown = 3.0;
+              this.showAnnouncement('Co-op Guest: Only the World Host can fight bosses!');
+            }
+          } else {
+            const res = applyDamageToBoss(b, dmg, kb);
+            this.spawnFloatingText(b.x + b.w / 2, b.y - 6, `${dmg}`, '#fde047');
+            this.spawnBurst(b.x + b.w / 2, b.y + 16, 14, b.def.auraColor);
+            landedHit = true;
+            if (res.defeatedNow) {
+              this.onBossDefeated(b);
+            }
           }
         }
       }
@@ -1061,11 +1480,14 @@ export class BasteraGameEngine {
       this.trauma = Math.min(1, this.trauma + 0.45);
       this.spawnFloatingText(this.player.x + 8, this.player.y - 12, 'TOKI WO TOMARE!', '#34d399');
     } else if (res.skillId === 'stand_rush') {
-      this.trauma = Math.min(1, this.trauma + 0.4);
-      this.speedLineTimer = 0.4;
+      this.starPlatinumTimer = 2.5;
+      this.starPlatinumTickTimer = 0;
+      this.trauma = Math.min(1, this.trauma + 0.45);
+      this.speedLineTimer = 0.65;
       this.spawnAfterimage('#a78bfa');
-      this.spawnFloatingText(this.player.x + 8, this.player.y - 12, 'ORA ORA ORA!', '#a78bfa');
-      this.resolveMeleeHits(chunks, skill.damageMultiplier, true);
+      this.spawnBurst(this.player.x + 8, this.player.y + 12, 18, '#a78bfa');
+      this.spawnFloatingText(this.player.x + 8, this.player.y - 14, 'STAR PLATINUM: ORA!', '#c4b5fd');
+      this.resolveStarPlatinumTick(chunks);
     } else if (res.skillId === 'sunburst_cleave') {
       this.trauma = Math.min(1, this.trauma + 0.45);
       this.speedLineTimer = 0.35;
@@ -1073,6 +1495,67 @@ export class BasteraGameEngine {
       this.resolveMeleeHits(chunks, skill.damageMultiplier, true);
     }
     this.emitHud();
+  }
+
+  private resolveStarPlatinumTick(chunks: GeneratedChunk[]): void {
+    const zoneW = 68;
+    const zoneH = 44;
+    const zoneX =
+      this.player.facing === 1 ? this.player.x + 4 : this.player.x - zoneW + this.player.w - 4;
+    const zoneY = this.player.y - 10;
+    const dmg = Math.max(4, Math.round(calculateAttackDamage(this.player, 0.38, true)));
+    const kb = 38 * this.player.facing;
+    let landedHit = false;
+
+    const punchX = this.player.x + 8 + this.player.facing * 26;
+    const punchY = this.player.y + 8 + (Math.random() - 0.5) * 14;
+    this.spawnBurst(punchX, punchY, 4, '#c084fc');
+
+    for (const ch of chunks) {
+      for (const prop of ch.interactables) {
+        if (
+          prop.kind === 'broken_brick' &&
+          !prop.activated &&
+          prop.secretId &&
+          rectsOverlap(zoneX, zoneY, zoneW, zoneH, prop.x, prop.y, prop.w, prop.h)
+        ) {
+          this.activateInteractable(prop, ch);
+          landedHit = true;
+        }
+      }
+
+      for (const en of ch.enemies) {
+        if (en.state === 'ko') continue;
+        if (rectsOverlap(zoneX, zoneY, zoneW, zoneH, en.x, en.y, en.w, en.h)) {
+          const res = applyDamageToEnemy(en, dmg, kb);
+          this.spawnFloatingText(en.x + en.w / 2, en.y - 6, `ORA! ${dmg}`, '#d8b4fe');
+          this.spawnBurst(en.x + en.w / 2, en.y + 10, 6, '#fbbf24');
+          landedHit = true;
+          if (res.killed) {
+            this.onEnemyKilled(en);
+          }
+        }
+      }
+
+      if (ch.boss && !ch.boss.defeated && this.bossCooldownSeconds <= 0 && canPlayerEngageBoss(this.worldRole)) {
+        const b = ch.boss;
+        if (rectsOverlap(zoneX, zoneY, zoneW, zoneH, b.x, b.y, b.w, b.h)) {
+          const res = applyDamageToBoss(b, dmg, kb * 0.5);
+          this.spawnFloatingText(b.x + b.w / 2, b.y - 8, `ORA! ${dmg}`, '#d8b4fe');
+          this.spawnBurst(b.x + b.w / 2, b.y + 16, 8, '#fbbf24');
+          landedHit = true;
+          if (res.defeatedNow) {
+            this.onBossDefeated(b);
+          }
+        }
+      }
+    }
+
+    if (landedHit) {
+      this.trauma = Math.min(1, this.trauma + 0.16);
+      gameAudio.playHit(true);
+      this.emitHud();
+    }
   }
 
   private tryInteract(): void {
@@ -1163,6 +1646,14 @@ export class BasteraGameEngine {
       if (prop.rewardWeaponId && !this.player.unlockedWeapons.includes(prop.rewardWeaponId)) {
         this.player.unlockedWeapons.push(prop.rewardWeaponId);
       }
+      if (prop.rewardWeaponId === 'fire_sword') {
+        equipWeapon(this.player, 'fire_sword');
+        this.spawnBurst(prop.x + 12, prop.y + 8, 28, '#fb923c');
+        this.showSecretCaption(
+          'OP SECRET WEAPON UNLOCKED: FIRE SWORD!',
+          'Blazing crimson-orange greatsword auto-equipped — deals 2x TOTAL DAMAGE!',
+        );
+      }
       gameAudio.playSecretFound();
       this.spawnBurst(prop.x + 10, prop.y + 8, 18, '#fbbf24');
       this.openDialogue(prop.speaker, 'secret', '#fbbf24', prop.dialogue);
@@ -1186,6 +1677,10 @@ export class BasteraGameEngine {
         gameAudio.playSecretFound();
         this.spawnBurst(prop.x + 12, prop.y + 12, 20, '#fbbf24');
         this.sendMilestone('secret', `Secret #${chunk.hiddenPassage.index}`);
+        this.showSecretCaption(
+          `SECRET #${chunk.hiddenPassage.index} DISCOVERED!`,
+          chunk.hiddenPassage.discoveryText,
+        );
         this.openDialogue(prop.speaker, 'secret', '#fbbf24', [
           ...prop.dialogue,
           chunk.hiddenPassage.rewardText,
@@ -1206,7 +1701,9 @@ export class BasteraGameEngine {
 
   private onEnemyKilled(enemy: EnemyState): void {
     this.player.gold += enemy.rewardGold;
+    const prevLevel = this.player.level;
     const pts = grantKillStatPoints(this.player, 'monster');
+    this.scaleLiveEnemiesOnLevelUp(prevLevel, this.player.level);
     const resId =
       enemy.biome === 'castle'
         ? 'royal_ember'
@@ -1225,10 +1722,41 @@ export class BasteraGameEngine {
   }
 
   private onBossDefeated(boss: ActiveBoss): void {
+    const isMega = Boolean(boss.def.isMegaBoss);
+    if (isMega) {
+      this.player.gold += 450;
+      const bonusPts = 25;
+      this.player.statPoints += bonusPts;
+      const prevLevel = this.player.level;
+      this.player.level = 1 + Math.floor((this.player.monstersSlain + this.player.bossesDefeated * 5) / 10);
+      this.scaleLiveEnemiesOnLevelUp(prevLevel, this.player.level);
+      addInventoryResource(this.inventory, 'crimson_vial', 2);
+      addInventoryResource(this.inventory, 'magma_core', 3);
+      this.hitstopTimer = 0.1;
+      this.trauma = 0.95;
+      this.clearAllInputs(true);
+      this.postBossInputLockTimer = 0.45;
+      gameAudio.playSecretFound();
+      this.showSecretCaption(
+        `MEGA BOSS SLAIN: ${boss.def.name}`,
+        `Dimensional rift sealed! +450G, +25 Stat Points & rare relics!`,
+      );
+      this.openDialogue(boss.def.name, 'boss', boss.def.primaryColor, [
+        boss.def.defeatLine,
+        `[SYSTEM] MEGA BOSS BOUNTY: +${bonusPts} Ability Stat Points, +450G & +2 Crimson Vials!`,
+      ]);
+      gameAudio.startMusic(this.getCurrentBiome(), null);
+      void this.saveCurrentGame('autosave', true);
+      this.emitHud(true);
+      return;
+    }
+
     this.defeatedBosses.add(boss.def.index);
     this.player.bossesDefeated = Math.max(this.player.bossesDefeated, this.defeatedBosses.size);
     this.player.gold += 100 + boss.def.index * 5;
+    const prevLevel = this.player.level;
     const pts = grantKillStatPoints(this.player, 'boss');
+    this.scaleLiveEnemiesOnLevelUp(prevLevel, this.player.level);
     addInventoryResource(this.inventory, 'crimson_vial', 1);
     const matId =
       boss.def.biome === 'castle'
@@ -1240,20 +1768,50 @@ export class BasteraGameEngine {
 
     this.hitstopTimer = 0.08;
     this.trauma = 0.85;
+    this.clearAllInputs(true);
+    this.postBossInputLockTimer = 0.45;
     gameAudio.playSecretFound();
     this.sendMilestone('boss', `${boss.def.name} (#${boss.def.index})`);
-    this.showAnnouncement(`Defeated ${boss.def.name}! +${pts} Stat Points!`);
+    this.syncHostWorldMeta();
+    this.completeBossEncounterProgress();
+    void this.saveCurrentGame('autosave', true);
 
+    // 10% chance a Dimensional Glitch-Crash spawns a colossal Mega Boss (suppressed during 60s 5-boss cooldown)
+    if (this.bossCooldownSeconds <= 0 && canPlayerEngageBoss(this.worldRole) && shouldTriggerMegaBossGlitch()) {
+      const arch = pickMegaBossArchetype();
+      const pendingBoss = createMegaBossInstance(
+        arch,
+        boss.def.index,
+        this.getCurrentBiome(),
+        this.player.x + 150,
+        FLOOR_Y,
+      );
+      this.megaCutscene = {
+        archetype: arch,
+        pendingBoss,
+        timer: 3.1,
+        duration: 3.1,
+      };
+      this.trauma = 1.0;
+      gameAudio.playMegaGlitchCrash();
+      this.showAnnouncement(`!! REALITY GLITCHED: ${pendingBoss.def.name} INBOUND !!`);
+      this.emitHud(true);
+      return;
+    }
+
+    if (this.bossCooldownSeconds <= 0) {
+      this.showAnnouncement(`Defeated ${boss.def.name}! +${pts} Stat Points!`);
+    }
     const lines = [
       boss.def.defeatLine,
       `[SYSTEM] +${pts} Ability Stat Points granted! Press [K] to open Status Window.`,
     ];
     if (boss.def.index === 40) {
-      lines.push('40 Bosses felled! Ahead lies the Dark Enchanted Forest of Ancient Ruins!');
+      lines.push('40 Castle Bosses felled! Cross the ruined bridge ahead into the Volcano Hell Citadel!');
     } else if (boss.def.index === 80) {
-      lines.push('80 Bosses felled! Brace yourself for the Volcano Hell Citadel!');
+      lines.push('80 Bosses felled! Ahead lies the Dark Enchanted Forest of Ancient Ruins!');
     } else if (boss.def.index === TOTAL_BOSSES) {
-      lines.push('All 120 JoJo Bosses defeated! Step through the Escape Gate ahead!');
+      lines.push('All 120 Citadel Bosses defeated! Step through the Escape Gate ahead!');
     }
     this.openDialogue(boss.def.name, 'boss', boss.def.primaryColor, lines);
     gameAudio.startMusic(this.getCurrentBiome(), null);
@@ -1261,6 +1819,7 @@ export class BasteraGameEngine {
   }
 
   private stepEnemies(chunks: GeneratedChunk[], dt: number, frozen: boolean): void {
+    const enemyDmgMult = getMonsterLevelMultiplier(this.player.level);
     for (const ch of chunks) {
       for (const en of ch.enemies) {
         en.hitFlash = Math.max(0, en.hitFlash - dt);
@@ -1293,7 +1852,7 @@ export class BasteraGameEngine {
             en.state = 'attack';
             en.stateTimer = 0.2;
             if (dist < 32 && Math.abs(this.player.y - en.y) < 28) {
-              this.damagePlayer(12, en.facing * 120);
+              this.damagePlayer(Math.round(12 * enemyDmgMult), en.facing * 120);
             }
           } else if (en.state === 'attack' && en.stateTimer <= 0) {
             en.state = 'recover';
@@ -1323,7 +1882,7 @@ export class BasteraGameEngine {
             en.x += en.vx * dt;
             en.y += en.vy * dt;
             if (rectsOverlap(en.x, en.y, en.w, en.h, this.player.x, this.player.y, this.player.w, this.player.h)) {
-              this.damagePlayer(10, en.facing * 90);
+              this.damagePlayer(Math.round(10 * enemyDmgMult), en.facing * 90);
               en.state = 'recover';
               en.stateTimer = 0.8;
             }
@@ -1358,7 +1917,7 @@ export class BasteraGameEngine {
               vx: en.facing * 135,
               vy: 0,
               radius: 4,
-              damage: 11,
+              damage: Math.round(11 * enemyDmgMult),
               fromPlayer: false,
               color: '#38bdf8',
               life: 2.0,
@@ -1367,6 +1926,68 @@ export class BasteraGameEngine {
           } else if (en.state === 'attack' && en.stateTimer <= 0) {
             en.state = 'recover';
             en.stateTimer = 1.4;
+          } else if (en.state === 'recover' && en.stateTimer <= 0) {
+            en.state = 'patrol';
+          }
+        } else if (en.archetype === 'cursed_armor') {
+          // Towering Living Armor shield-march & Zweihander cleave
+          en.facing = dx >= 0 ? 1 : -1;
+          if (en.state === 'patrol') {
+            if (dist < 160 && dist > 30) {
+              en.vx = en.facing * 44;
+            } else if (dist <= 30) {
+              en.vx = 0;
+              en.state = 'windup';
+              en.stateTimer = 0.52;
+            } else {
+              en.vx = Math.sin(this.simTime * 1.1 + en.patrolOriginX) * 18;
+            }
+          } else if (en.state === 'windup' && en.stateTimer <= 0) {
+            en.state = 'attack';
+            en.stateTimer = 0.28;
+            en.vx = en.facing * 95;
+            if (dist < 38 && Math.abs(this.player.y - en.y) < 32) {
+              this.damagePlayer(Math.round(16 * enemyDmgMult), en.facing * 140);
+            }
+          } else if (en.state === 'attack' && en.stateTimer <= 0) {
+            en.state = 'recover';
+            en.stateTimer = 0.85;
+          } else if (en.state === 'recover' && en.stateTimer <= 0) {
+            en.state = 'patrol';
+          }
+          en.x += en.vx * dt;
+          en.vx *= 0.85;
+        } else if (en.archetype === 'phantom_wisp') {
+          // Floating spirit wraith that drifts and casts arcane bolts
+          en.facing = dx >= 0 ? 1 : -1;
+          const floatY = FLOOR_Y - 56 + Math.sin(this.simTime * 2.6 + en.patrolOriginX) * 12;
+          en.y += (floatY - en.y) * 4 * dt;
+          if (en.state === 'patrol') {
+            if (dist < 75) en.x -= en.facing * 34 * dt;
+            else if (dist > 140 && dist < 240) en.x += en.facing * 28 * dt;
+            if (dist < 210 && en.stateTimer <= 0) {
+              en.state = 'windup';
+              en.stateTimer = 0.45;
+            }
+          } else if (en.state === 'windup' && en.stateTimer <= 0) {
+            en.state = 'attack';
+            en.stateTimer = 0.25;
+            this.projectiles.push({
+              id: `pw_${this.simTime}_${en.id}`,
+              x: en.x + en.w / 2,
+              y: en.y + 8,
+              vx: en.facing * 145,
+              vy: Math.sin(this.simTime * 3) * 12,
+              radius: 4,
+              damage: Math.round(12 * enemyDmgMult),
+              fromPlayer: false,
+              color: '#38bdf8',
+              life: 2.1,
+              kind: 'rune',
+            });
+          } else if (en.state === 'attack' && en.stateTimer <= 0) {
+            en.state = 'recover';
+            en.stateTimer = 1.3;
           } else if (en.state === 'recover' && en.stateTimer <= 0) {
             en.state = 'patrol';
           }
@@ -1385,7 +2006,7 @@ export class BasteraGameEngine {
           } else if (en.state === 'attack') {
             en.x += en.vx * dt;
             if (rectsOverlap(en.x, en.y, en.w, en.h, this.player.x, this.player.y, this.player.w, this.player.h)) {
-              this.damagePlayer(15, en.facing * 150);
+              this.damagePlayer(Math.round(15 * enemyDmgMult), en.facing * 150);
               en.state = 'recover';
               en.stateTimer = 0.9;
             }
@@ -1537,7 +2158,7 @@ export class BasteraGameEngine {
               break;
             }
           }
-          if (!hit && ch.boss && !ch.boss.defeated) {
+          if (!hit && ch.boss && !ch.boss.defeated && canPlayerEngageBoss(this.worldRole)) {
             const b = ch.boss;
             if (rectsOverlap(pr.x - pr.radius, pr.y - pr.radius, pr.radius * 2, pr.radius * 2, b.x, b.y, b.w, b.h)) {
               const res = applyDamageToBoss(b, pr.damage, Math.sign(pr.vx) * 50);
@@ -1736,6 +2357,9 @@ export class BasteraGameEngine {
 
     for (const ch of chunks) {
       drawPlatforms(ctx, ch.platforms, ch.biome, renderCamX, this.simTime);
+      if (ch.index === 41) {
+        drawVolcanoPitChasm(ctx, ch.startX, 190, renderCamX, this.simTime);
+      }
       drawCandles(ctx, ch.candles, renderCamX, this.simTime);
       drawInteractables(
         ctx,
@@ -1797,9 +2421,29 @@ export class BasteraGameEngine {
       this.player.parryTimer > 0,
       this.player.hitFlash,
       renderCamX,
+      false,
+      '#60a5fa',
+      undefined,
+      this.player.customization,
     );
 
+    if (this.starPlatinumTimer > 0) {
+      drawStarPlatinumGuardian(
+        ctx,
+        this.player.x,
+        this.player.y,
+        this.player.facing,
+        renderCamX,
+        this.simTime,
+        this.starPlatinumTimer,
+      );
+    }
+
     drawProjectiles(ctx, this.projectiles, renderCamX);
+
+    if (renderCamX < 40) {
+      drawDarkSanctumLighting(ctx, renderCamX, this.player.x, this.player.y, this.simTime);
+    }
 
     // Particles
     for (const p of this.particles) {
@@ -1870,6 +2514,24 @@ export class BasteraGameEngine {
     }
     ctx.drawImage(this.vignetteCanvas, 0, 0);
 
+    // Mega Boss Glitch-Crash & Intro Cutscene Layer
+    if (this.megaCutscene && this.status === 'playing') {
+      const mc = this.megaCutscene;
+      const elapsed = mc.duration - mc.timer;
+      const phase: 'glitch' | 'reveal' = elapsed < 0.95 ? 'glitch' : 'reveal';
+      const progress = phase === 'glitch' ? elapsed / 0.95 : (elapsed - 0.95) / Math.max(0.1, mc.duration - 0.95);
+      const hudCutscene: MegaCutsceneHud = {
+        archetype: mc.archetype,
+        name: mc.pendingBoss.def.name,
+        title: mc.pendingBoss.def.title,
+        standName: mc.pendingBoss.def.standName,
+        subtitle: mc.pendingBoss.def.voiceLine,
+        phase,
+        progress: Math.max(0, Math.min(1, progress)),
+      };
+      drawMegaBossCutscene(ctx, hudCutscene, mc.pendingBoss, this.simTime);
+    }
+
     ctx.restore();
   }
 
@@ -1901,6 +2563,11 @@ export class BasteraGameEngine {
     const biome = this.getCurrentBiome();
     const nearbyBoss = this.getActiveNearbyBoss();
     const nearbyPrompt = this.getNearbyInteractableLabel();
+    const custSig = `${this.player.customization.cloakColor},${this.player.customization.armorColor},${this.player.customization.visorColor},${this.player.customization.plumeColor}`;
+    const secCapSig = this.secretCaption ? `${this.secretCaption.title}:${this.secretCaption.detail}` : 'none';
+    const megaCutSig = this.megaCutscene
+      ? `${this.megaCutscene.archetype}:${this.megaCutscene.timer.toFixed(1)}`
+      : 'none';
     const sig = [
       this.status,
       Math.round(this.player.hp),
@@ -1915,26 +2582,55 @@ export class BasteraGameEngine {
       this.player.stats.attack,
       this.player.stats.hp,
       this.player.stats.speed,
+      custSig,
       biome,
-      Math.max(0, Math.round((this.player.x - 68) / 16)),
+      Math.round((this.player.x - 68) / 16),
       this.player.bossesDefeated,
       this.player.secretsFound,
       this.player.equippedWeapon,
       this.player.skillSlots.join(','),
       this.player.skillCooldowns.map((c) => c.toFixed(1)).join(','),
+      this.player.dashCooldown.toFixed(1),
+      this.starPlatinumTimer > 0 ? '1' : '0',
+      Math.ceil(this.bossCooldownSeconds),
+      this.bossesFoughtStreak,
       this.dialogue ? `${this.dialogue.lineIndex}:${this.dialogue.charIndex}` : 'none',
       nearbyBoss ? `${nearbyBoss.def.index}:${Math.round(nearbyBoss.hp)}` : 'none',
       this.bossBattle
-        ? `${this.bossBattle.phase}:${Math.round(this.bossBattle.boss.hp)}:${this.bossBattle.message}:${this.bossBattle.jotaroVoiceStatus}:${this.bossBattle.jotaroLine ?? ''}:${this.bossBattle.jotaroVoiceError ?? ''}`
+        ? `${this.bossBattle.phase}:${Math.round(this.bossBattle.boss.hp)}:${this.bossBattle.message}`
         : 'none',
+      megaCutSig,
       this.onlineCount,
+      this.worldId,
+      this.worldRole,
+      this.worldPlayerCount,
+      this.onlineWorlds.length,
+      this.lastSavedAt ?? '',
       this.announcement ?? '',
+      secCapSig,
       nearbyPrompt ?? '',
       gameAudio.isMuted() ? '1' : '0',
     ].join('|');
 
     if (!force && sig === this.lastHudSignature) return;
     this.lastHudSignature = sig;
+
+    let megaCutsceneHud: MegaCutsceneHud | null = null;
+    if (this.megaCutscene) {
+      const mc = this.megaCutscene;
+      const elapsed = mc.duration - mc.timer;
+      const phase: 'glitch' | 'reveal' = elapsed < 0.95 ? 'glitch' : 'reveal';
+      const progress = phase === 'glitch' ? elapsed / 0.95 : (elapsed - 0.95) / Math.max(0.1, mc.duration - 0.95);
+      megaCutsceneHud = {
+        archetype: mc.archetype,
+        name: mc.pendingBoss.def.name,
+        title: mc.pendingBoss.def.title,
+        standName: mc.pendingBoss.def.standName,
+        subtitle: mc.pendingBoss.def.voiceLine,
+        phase,
+        progress: Math.max(0, Math.min(1, progress)),
+      };
+    }
 
     const snapshot: HudSnapshot = {
       status: this.status,
@@ -1947,9 +2643,10 @@ export class BasteraGameEngine {
       statPoints: this.player.statPoints,
       stats: { ...this.player.stats },
       monstersSlain: this.player.monstersSlain,
+      customization: { ...this.player.customization },
       biome,
       biomeLabel: getBiomeDisplayName(biome),
-      distanceMeters: Math.max(0, Math.round((this.player.x - 68) / 16)),
+      distanceMeters: Math.round((this.player.x - 68) / 16),
       bossesDefeated: this.player.bossesDefeated,
       totalBosses: TOTAL_BOSSES,
       secretsFound: this.player.secretsFound,
@@ -1958,6 +2655,10 @@ export class BasteraGameEngine {
       unlockedWeapons: [...this.player.unlockedWeapons],
       skillSlots: [...this.player.skillSlots],
       skillCooldowns: [...this.player.skillCooldowns],
+      dashCooldown: Number(this.player.dashCooldown.toFixed(2)),
+      starPlatinumActive: this.starPlatinumTimer > 0,
+      bossCooldownSeconds: Math.ceil(this.bossCooldownSeconds),
+      bossFoughtStreak: this.bossesFoughtStreak,
       inventory: this.inventory.map((i) => ({ ...i })),
       dialogue: this.dialogue ? { ...this.dialogue } : null,
       activeBoss: nearbyBoss
@@ -1972,9 +2673,18 @@ export class BasteraGameEngine {
           }
         : null,
       bossBattle: this.bossBattle ? toBossBattleSnapshot(this.bossBattle) : null,
+      megaCutscene: megaCutsceneHud,
       checkpoints: getBiomeCheckpointList(this.player.highestCheckpointIndex),
       onlineCount: this.onlineCount,
+      worldId: this.worldId,
+      worldRole: this.worldRole,
+      worldHostName: this.worldHostName,
+      isWorldPublic: this.isWorldPublic,
+      onlineWorlds: [...this.onlineWorlds],
+      worldPlayerCount: this.worldPlayerCount,
+      lastSavedAt: this.lastSavedAt,
       announcement: this.announcement,
+      secretCaption: this.secretCaption ? { ...this.secretCaption } : null,
       nearbyPrompt,
       muted: gameAudio.isMuted(),
     };
@@ -1988,22 +2698,70 @@ export class BasteraGameEngine {
       const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
       this.ws = ws;
 
+      ws.onopen = () => {
+        this.syncHostWorldMeta();
+      };
+
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(String(ev.data));
           if (msg.type === 'world:init') {
             this.selfPeerId = msg.selfId;
+            this.ownWorldId = msg.ownWorldId || msg.worldId || 'LOCAL';
+            this.worldId = msg.worldId || this.ownWorldId;
+            this.worldRole = msg.role === 'guest' ? 'guest' : 'host';
+            this.worldHostName = msg.hostName || null;
             this.peers.clear();
             for (const p of msg.peers || []) {
               if (p.id !== this.selfPeerId) this.peers.set(p.id, p);
             }
+            if (Array.isArray(msg.worlds)) this.onlineWorlds = msg.worlds;
             this.onlineCount = msg.stats?.onlineCount ?? 1;
+            this.worldPlayerCount = msg.stats?.worldPlayerCount ?? this.peers.size + 1;
+            this.emitHud(true);
+          } else if (msg.type === 'world:joined') {
+            this.worldId = msg.worldId || this.ownWorldId;
+            this.worldRole = msg.role === 'guest' ? 'guest' : 'host';
+            this.worldHostName = this.worldRole === 'guest' ? msg.hostName || 'Host' : null;
+            this.peers.clear();
+            for (const p of msg.peers || []) {
+              if (p.id !== this.selfPeerId) this.peers.set(p.id, p);
+            }
+            this.hostDefeatedBosses = new Set(Array.isArray(msg.defeatedBosses) ? msg.defeatedBosses : []);
+            this.worldPlayerCount = msg.worldPlayerCount ?? this.peers.size + 1;
+            this.onlineCount = msg.onlineCount ?? this.onlineCount;
+            this.bossBattle = null;
+            this.megaCutscene = null;
+            this.chunks.clear();
+            this.chunksDirty = true;
+            this.ensureChunksAround(this.player.x);
+            if (this.worldRole === 'guest') {
+              this.showAnnouncement(
+                `Joined ${this.worldHostName}'s Bastera world! Co-op Guest: bosses are locked to Host.`,
+              );
+            } else {
+              this.showAnnouncement('Returned to your own Bastera world.');
+            }
+            this.emitHud(true);
+          } else if (msg.type === 'worlds:list') {
+            if (Array.isArray(msg.worlds)) this.onlineWorlds = msg.worlds;
+            if (Number.isFinite(msg.onlineCount)) this.onlineCount = msg.onlineCount;
             this.emitHud();
+          } else if (msg.type === 'world:boss_state' && this.worldRole === 'guest') {
+            this.hostDefeatedBosses = new Set(Array.isArray(msg.defeatedBosses) ? msg.defeatedBosses : []);
+            this.chunks.clear();
+            this.chunksDirty = true;
+            this.ensureChunksAround(this.player.x);
+            this.emitHud();
+          } else if (msg.type === 'world:error' && typeof msg.message === 'string') {
+            this.showAnnouncement(msg.message);
           } else if (msg.type === 'peer:join' && msg.peer) {
             if (msg.peer.id !== this.selfPeerId) {
               this.peers.set(msg.peer.id, msg.peer);
+              this.showAnnouncement(`${msg.peer.name} joined your Bastera world!`);
             }
-            this.onlineCount = msg.onlineCount ?? this.peers.size + 1;
+            this.worldPlayerCount = msg.worldPlayerCount ?? this.peers.size + 1;
+            this.onlineCount = msg.onlineCount ?? this.onlineCount;
             this.emitHud();
           } else if (msg.type === 'peer:update' && msg.peer) {
             if (msg.peer.id !== this.selfPeerId) {
@@ -2011,6 +2769,7 @@ export class BasteraGameEngine {
             }
           } else if (msg.type === 'peer:leave') {
             this.peers.delete(msg.id);
+            this.worldPlayerCount = msg.worldPlayerCount ?? this.peers.size + 1;
             this.onlineCount = msg.onlineCount ?? Math.max(1, this.peers.size + 1);
             this.emitHud();
           } else if (msg.type === 'world:announcement') {
@@ -2052,6 +2811,7 @@ export class BasteraGameEngine {
         weaponId: this.player.equippedWeapon,
         biome: this.getCurrentBiome(),
         bossesDefeated: this.player.bossesDefeated,
+        customization: this.player.customization,
       }),
     );
   }
@@ -2067,6 +2827,15 @@ export class BasteraGameEngine {
         e.preventDefault();
       }
     }
+    if (this.status !== 'playing' || this.modalPaused || this.bossBattle || this.megaCutscene || this.volcanoBridgeFallTimer > 0) {
+      return;
+    }
+    if (this.postBossInputLockTimer > 0 && ['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD'].includes(e.code)) {
+      return;
+    }
+    if (e.repeat && !this.heldKeys.has(e.code)) {
+      return;
+    }
     if (!e.repeat) {
       this.justPressed.add(e.code);
     }
@@ -2078,21 +2847,26 @@ export class BasteraGameEngine {
   };
 
   private handleBlur = () => {
-    this.heldKeys.clear();
-    this.virtualInput.left = false;
-    this.virtualInput.right = false;
-    this.virtualInput.jumpHeld = false;
+    this.clearAllInputs(true);
+  };
+
+  private handleVisibilityChange = () => {
+    if (document.hidden) {
+      this.clearAllInputs(true);
+    }
   };
 
   private attachInputListeners(): void {
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
     window.addEventListener('blur', this.handleBlur);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
   private detachInputListeners(): void {
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('keyup', this.handleKeyUp);
     window.removeEventListener('blur', this.handleBlur);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
   }
 }

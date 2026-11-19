@@ -10,9 +10,8 @@ interface BossBattleOverlayProps {
   onAttackWeapon: () => void;
   onUseSkill: (slot: 0 | 1 | 2) => void;
   onUsePotion: (itemId: string) => void;
-  onRun: () => void;
+  onRetreat: () => void;
   onEscape: () => void;
-  onReplayVoice: () => void;
   onOpenStatus: () => void;
   onToggleMute: () => void;
   onTogglePause: () => void;
@@ -24,9 +23,8 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
   onAttackWeapon,
   onUseSkill,
   onUsePotion,
-  onRun,
+  onRetreat,
   onEscape,
-  onReplayVoice,
   onOpenStatus,
   onToggleMute,
   onTogglePause,
@@ -75,26 +73,47 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
           <span className="absolute bottom-0 left-0 w-1.5 h-1.5 bg-amber-300" />
           <span className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-amber-300" />
 
-          <PixelBossPortrait bossIndex={battle.bossIndex} expression={bossExpression} size={56} />
+          <PixelBossPortrait
+            bossIndex={battle.bossIndex}
+            megaArchetype={battle.megaArchetype}
+            expression={bossExpression}
+            size={56}
+          />
 
           <div className="flex-1 min-w-0">
+            {battle.isMegaBoss && (
+              <div
+                data-testid="mega-boss-badge"
+                className="mb-1 px-1.5 py-0.5 bg-[#4c0519] border border-yellow-300/90 font-pixel-mono text-[9px] font-bold tracking-wider text-yellow-200 flex items-center justify-between"
+              >
+                <span>✦ MEGA BOSS BREACH</span>
+                <span className="text-cyan-300">OVERDRIVE</span>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-2">
               <span className="font-display font-bold text-xs sm:text-sm text-amber-50 truncate">
                 {battle.bossName}
               </span>
               <span className="font-pixel-mono text-[10px] text-amber-300 shrink-0">
-                Lv.{battle.bossIndex}
+                {battle.isMegaBoss ? 'MEGA' : `Lv.${battle.bossIndex}`}
               </span>
             </div>
             <div className="flex items-center justify-between text-[10px] font-pixel-mono text-amber-200/80 mt-0.5">
-              <span className="truncate">Stand: {battle.standName}</span>
+              <span className="truncate">Aura: {battle.standName}</span>
               {battle.bossFrozenTurns > 0 && (
                 <span className="text-emerald-300 shrink-0 ml-1">[FROZEN]</span>
               )}
             </div>
             <div className="flex items-center justify-between gap-2 text-[9px] font-pixel-mono text-sky-200/90 mt-0.5">
               <span className="truncate">{battle.climateLabel}</span>
-              <span className="text-rose-300 shrink-0 truncate">{battle.attackName}</span>
+              <span
+                className="shrink-0 truncate font-bold"
+                style={{
+                  color: battle.activeSkillPalette?.[0] ?? '#fda4af',
+                }}
+              >
+                {battle.activeSkillName ?? battle.attackName}
+              </span>
             </div>
 
             {/* HP Bar with trailing damage ghost bar */}
@@ -136,17 +155,6 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
           </button>
           <button
             type="button"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onReplayVoice();
-            }}
-            title="Replay Jotaro Kujo Attack Announcement"
-            className="px-2.5 h-8 bg-[#180f14] border border-amber-500/50 hover:border-amber-300 text-amber-200 font-pixel-mono text-[10px] cursor-pointer whitespace-nowrap shrink-0"
-          >
-            ♪ Jotaro AI
-          </button>
-          <button
-            type="button"
             aria-label={hud.muted ? 'Unmute Audio' : 'Mute Audio'}
             onClick={(e) => {
               e.currentTarget.blur();
@@ -180,7 +188,11 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
             <span className="absolute bottom-0 left-0 w-1.5 h-1.5 bg-amber-300" />
             <span className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-amber-300" />
 
-            <PixelWarriorPortrait weaponId={hud.equippedWeapon} size={46} />
+            <PixelWarriorPortrait
+              weaponId={hud.equippedWeapon}
+              customization={hud.customization}
+              size={46}
+            />
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
@@ -231,7 +243,7 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
 
         {/* Classic Pokemon Split Command Deck */}
         <div className="pointer-events-auto grid grid-cols-1 sm:grid-cols-12 gap-2 bg-[#0d070a]/95 border-2 border-white p-2.5 shadow-[0_4px_0_rgba(0,0,0,0.9)]">
-          {/* Left Narration & Jotaro Kujo AI Voiceline Box */}
+          {/* Left Narration Box */}
           <div className="sm:col-span-6 bg-black border border-amber-400/50 px-3 py-2 flex flex-col justify-between min-h-[76px]">
             <div className="flex items-center justify-between gap-2 text-[10px] font-pixel-mono text-amber-300">
               <span className="truncate">* {battle.speaker}</span>
@@ -250,28 +262,6 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
             <p className="font-pixel-mono text-xs text-white leading-snug mt-1">
               * {battle.message}
             </p>
-            {(battle.jotaroLine || battle.jotaroVoiceError) && (
-              <div className="mt-1.5 pt-1 border-t border-amber-500/25 flex items-center justify-between gap-2 text-[10px] font-pixel-mono">
-                <span className="text-purple-300 truncate" data-testid="jotaro-caption">
-                  ★ JOTARO AI: &ldquo;{battle.jotaroLine}&rdquo;
-                </span>
-                {battle.jotaroVoiceStatus === 'generating' && (
-                  <span className="text-amber-300 shrink-0">SYNTHESIZING...</span>
-                )}
-                {battle.jotaroVoiceStatus === 'ready' && (
-                  <span className="text-emerald-300 shrink-0">VOICE READY</span>
-                )}
-                {battle.jotaroVoiceStatus === 'error' && battle.jotaroVoiceError && (
-                  <span
-                    className="text-rose-300 shrink-0 truncate max-w-[180px]"
-                    title={battle.jotaroVoiceError}
-                    data-testid="jotaro-voice-error"
-                  >
-                    {battle.jotaroVoiceError}
-                  </span>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Right Pokemon 2x2 Action Menu / Fight Submenu / Potions Submenu */}
@@ -305,14 +295,15 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
                 <button
                   type="button"
                   disabled={!isMenuReady}
-                  data-testid="battle-run-btn"
+                  data-testid="battle-retreat-btn"
+                  title="Retreat outside boss range & open Main Sanctuary Interface"
                   onClick={(e) => {
                     e.currentTarget.blur();
-                    onRun();
+                    onRetreat();
                   }}
                   className="px-3 py-2 bg-[#451a03] hover:bg-[#78350f] disabled:opacity-45 border-2 border-amber-500/75 text-amber-100 font-pixel-mono text-xs font-bold tracking-wider text-left cursor-pointer whitespace-nowrap"
                 >
-                  ▶ RUN
+                  ▶ RETREAT
                 </button>
                 <button
                   type="button"

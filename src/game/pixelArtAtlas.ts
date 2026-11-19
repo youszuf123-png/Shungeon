@@ -1,6 +1,7 @@
 import { getBossFacialTraits } from './bossFaces';
 import { SKILLS, WEAPONS } from './data';
-import type { BiomeId, BossDef, SkillId, WeaponId } from './types';
+import { DEFAULT_WARRIOR_CUSTOMIZATION } from './rules';
+import type { BiomeId, BossDef, SkillId, WarriorCustomization, WeaponId } from './types';
 
 export type AnimeExpression = 'smirk' | 'menacing' | 'wryyy' | 'grit';
 
@@ -159,6 +160,98 @@ export function drawBossPortrait(
   px(ctx, 22, 43, 4, 3, '#fde047');
   px(ctx, 23, 44, 2, 1, def.auraColor);
 
+  // Bespoke Mega Boss Portrait Overrides (DIO & Undead Dread Knight)
+  if (def.megaArchetype === 'mega_dio') {
+    // High black & gold vampire coat collar
+    px(ctx, 6, 24, 8, 14, '#09060b');
+    px(ctx, 7, 25, 6, 12, '#eab308');
+    px(ctx, 34, 24, 8, 14, '#09060b');
+    px(ctx, 35, 25, 6, 12, '#eab308');
+    // Razor-sharp chiseled vampire jawline + pale immortal skin
+    px(ctx, 13, 12, 22, 17, '#09060b');
+    px(ctx, 15, 29, 18, 5, '#09060b');
+    px(ctx, 18, 34, 12, 4, '#09060b');
+    px(ctx, 14, 13, 20, 16, '#fef3c7');
+    px(ctx, 16, 28, 16, 5, '#fef3c7');
+    px(ctx, 19, 33, 10, 4, '#fde68a');
+    px(ctx, 14, 13, 20, 6, '#e7c697'); // Forehead shadow
+    // Spiky radiant yellow-gold vampire mane + green heart headband
+    const dioSpikes: [number, number, number, number][] = [
+      [8, 6, 6, 12],
+      [13, 2, 6, 13],
+      [20, 1, 8, 14],
+      [29, 2, 6, 13],
+      [34, 6, 6, 12],
+    ];
+    for (const [sx, sy, sw, sh] of dioSpikes) {
+      px(ctx, sx, sy, sw, sh, '#09060b');
+      px(ctx, sx + 1, sy + 1, sw - 2, sh - 2, '#facc15');
+      px(ctx, sx + 2, sy + 1, Math.max(1, sw - 4), sh - 4, '#fef08a');
+    }
+    px(ctx, 12, 12, 24, 3, '#09060b');
+    px(ctx, 13, 13, 22, 2, '#eab308');
+    px(ctx, 22, 11, 4, 4, '#22c55e'); // Heart circlet gem
+    px(ctx, 14, 15, 4, 9, '#facc15');
+    px(ctx, 30, 15, 4, 9, '#eab308');
+    // Cunning crimson glowing vampire eyes
+    px(ctx, 16, 18, 5, 2, '#09060b');
+    px(ctx, 27, 18, 5, 2, '#09060b');
+    px(ctx, 16, 20, 6, 3, '#09060b');
+    px(ctx, 17, 21, 4, 2, '#f43f5e');
+    px(ctx, 18, 21, 2, 1, '#fef08a');
+    px(ctx, 26, 20, 6, 3, '#09060b');
+    px(ctx, 27, 21, 4, 2, '#f43f5e');
+    px(ctx, 28, 21, 2, 1, '#fef08a');
+    // Cheekbone & sharp vampire fangs grin
+    px(ctx, 23, 22, 2, 5, '#d9a066');
+    px(ctx, 18, 29, 12, 5, '#09060b');
+    px(ctx, 19, 30, 10, 3, '#9f1239');
+    px(ctx, 19, 30, 10, 1, '#ffffff');
+    px(ctx, 20, 31, 1, 2, '#ffffff');
+    px(ctx, 27, 31, 1, 2, '#ffffff');
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, 47, 47);
+    ctx.restore();
+    return;
+  }
+
+  if (def.megaArchetype === 'mega_undead_knight') {
+    // Runed dark-steel pauldrons & horned obsidian skull dread helm
+    px(ctx, 4, 31, 40, 17, '#09060b');
+    px(ctx, 6, 32, 36, 15, '#334155');
+    px(ctx, 10, 33, 28, 13, '#1e293b');
+    px(ctx, 19, 36, 10, 8, '#09060b');
+    px(ctx, 21, 38, 6, 4, '#22d3ee'); // Neon soulfire chest rune
+    // Sweeping dread horns
+    px(ctx, 5, 2, 6, 13, '#09060b');
+    px(ctx, 6, 3, 4, 11, '#8b5cf6');
+    px(ctx, 7, 4, 2, 7, '#e2e8f0');
+    px(ctx, 37, 2, 6, 13, '#09060b');
+    px(ctx, 38, 3, 4, 11, '#8b5cf6');
+    px(ctx, 39, 4, 2, 7, '#e2e8f0');
+    // Armored Dread Helm + Hollow Skull Visor
+    px(ctx, 11, 10, 26, 26, '#09060b');
+    px(ctx, 12, 11, 24, 23, '#475569');
+    px(ctx, 13, 12, 22, 6, '#94a3b8');
+    px(ctx, 15, 19, 18, 12, '#09060b');
+    // Blazing emerald-cyan eye slits inside dark helm cavity
+    px(ctx, 17, 21, 5, 3, '#34d399');
+    px(ctx, 18, 22, 3, 1, '#ffffff');
+    px(ctx, 26, 21, 5, 3, '#34d399');
+    px(ctx, 27, 22, 3, 1, '#ffffff');
+    // Steel teeth grill + glowing forehead crown sigil
+    px(ctx, 22, 14, 4, 4, '#e879f9');
+    for (let tx = 18; tx <= 28; tx += 3) {
+      px(ctx, tx, 28, 2, 4, '#cbd5e1');
+    }
+    ctx.strokeStyle = '#8b5cf6';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, 47, 47);
+    ctx.restore();
+    return;
+  }
+
   const traits = getBossFacialTraits(def.index);
 
   // Chiseled JoJo Face Silhouette sculpted by per-boss JawShape
@@ -241,14 +334,34 @@ export function drawBossPortrait(
     px(ctx, 29, 15, 3, 2, def.secondaryColor);
   }
 
-  // Piercing Anime Eyes & Eyebrows styled by per-boss EyeDesign
+  // Piercing Anime Eyes & Eyebrows styled by per-boss BrowStyle + EyeDesign
   const wideEyes = expression === 'wryyy' || expression === 'grit';
   const eyeH = traits.eyeDesign === 'narrow_assassin' ? 2 : wideEyes ? 4 : 3;
-  // Furious diagonal Araki eyebrows
-  px(ctx, 16, 18, 6, 2, pRamp.ink);
-  px(ctx, 20, 20, 2, 1, pRamp.ink);
-  px(ctx, 26, 18, 6, 2, pRamp.ink);
-  px(ctx, 26, 20, 2, 1, pRamp.ink);
+  const hairRamp = makeRamp(traits.hairColor);
+  // Distinct per-boss BrowStyle
+  if (traits.browStyle === 'arched_noble') {
+    px(ctx, 16, 17, 5, 1, hairRamp.ink);
+    px(ctx, 19, 18, 3, 2, hairRamp.ink);
+    px(ctx, 27, 17, 5, 1, hairRamp.ink);
+    px(ctx, 26, 18, 3, 2, hairRamp.ink);
+  } else if (traits.browStyle === 'notched_brawler') {
+    px(ctx, 16, 18, 3, 2, hairRamp.ink);
+    px(ctx, 20, 19, 2, 1, hairRamp.ink); // Scar notch in left brow
+    px(ctx, 26, 18, 6, 2, hairRamp.ink);
+  } else if (traits.browStyle === 'heavy_knitted') {
+    px(ctx, 15, 18, 8, 2, hairRamp.ink);
+    px(ctx, 25, 18, 8, 2, hairRamp.ink);
+    px(ctx, 23, 19, 2, 2, skinRamp.ink);
+  } else if (traits.browStyle === 'split_scar') {
+    px(ctx, 16, 18, 6, 2, hairRamp.ink);
+    px(ctx, 26, 18, 6, 2, hairRamp.ink);
+    px(ctx, 19, 16, 2, 6, traits.scarColor);
+  } else {
+    px(ctx, 16, 18, 6, 2, hairRamp.ink);
+    px(ctx, 20, 20, 2, 1, hairRamp.ink);
+    px(ctx, 26, 18, 6, 2, hairRamp.ink);
+    px(ctx, 26, 20, 2, 1, hairRamp.ink);
+  }
 
   if (traits.eyeDesign === 'cyber_visor') {
     // Sleek glowing red/cyan targeting visor over left eye + cold right glare
@@ -295,7 +408,16 @@ export function drawBossPortrait(
     }
   }
 
-  // Per-Boss Mask OR Iconic JoJo Facial Expression Mouths
+  // Per-Boss Mask OR Iconic JoJo Facial Expression + LipDetail
+  const lipTint =
+    traits.lipDetail === 'crimson_rouge'
+      ? '#be123c'
+      : traits.lipDetail === 'violet_goth'
+        ? '#6b21a8'
+        : traits.lipDetail === 'gold_plated'
+          ? '#fbbf24'
+          : skinRamp.sh;
+
   if (traits.jawShape === 'masked_phantom') {
     px(ctx, 16, 27, 16, 8, '#09060b');
     px(ctx, 17, 28, 14, 6, '#334155');
@@ -311,25 +433,24 @@ export function drawBossPortrait(
     px(ctx, 20, 31, 8, 1, '#f8fafc'); // Lower teeth
     px(ctx, 20, 30, 1, 2, '#ffffff'); // Sharp left vampire fang!
     px(ctx, 27, 30, 1, 2, '#ffffff'); // Sharp right vampire fang!
-    // Forehead rage vein
     px(ctx, 30, 14, 2, 1, '#fb7185');
     px(ctx, 31, 15, 1, 2, '#fb7185');
   } else if (expression === 'grit') {
-    // Shocked clenched-teeth grimace when hit
     px(ctx, 19, 29, 10, 4, pRamp.ink);
     px(ctx, 20, 30, 8, 2, '#ffffff');
     px(ctx, 22, 30, 1, 2, '#94a3b8');
     px(ctx, 25, 30, 1, 2, '#94a3b8');
   } else if (expression === 'smirk') {
-    // Arrogant diagonal JoJo side-smirk
     px(ctx, 20, 30, 6, 1, pRamp.ink);
     px(ctx, 26, 29, 3, 1, pRamp.ink);
-    px(ctx, 27, 29, 2, 1, '#ffffff'); // Glint of canine tooth
-    px(ctx, 22, 32, 4, 1, skinRamp.sh); // Lower lip shadow
+    px(ctx, 27, 29, 2, 1, '#ffffff');
+    px(ctx, 21, 31, 6, 2, lipTint);
   } else {
-    // Cold brooding Jotaro glare
     px(ctx, 20, 30, 8, 1, pRamp.ink);
-    px(ctx, 22, 32, 4, 1, skinRamp.sh);
+    px(ctx, 21, 31, 6, 2, lipTint);
+  }
+  if (traits.lipDetail === 'scarred_lip' && traits.jawShape !== 'masked_phantom') {
+    px(ctx, 22, 28, 1, 6, traits.scarColor);
   }
 
   // Facial Hair & Accessories (Goatee, Monocle, Earrings, Chinplate, Fang Piercings)
@@ -372,7 +493,7 @@ export function drawBossPortrait(
     px(ctx, 12, 15, 3, 10, '#1e1b4b'); // Sideburns
     px(ctx, 33, 15, 3, 10, '#1e1b4b');
   } else if (def.hatStyle === 'visor') {
-    // Jotaro-style cap merging into dark hair spikes
+    // Sleek armored visor cap merging into dark hair spikes
     px(ctx, 12, 5, 24, 11, '#09060b');
     px(ctx, 13, 6, 22, 9, sRamp.sh);
     px(ctx, 11, 13, 26, 3, '#09060b'); // Heavy visor brim casting eye shadow
@@ -418,6 +539,31 @@ export function drawBossPortrait(
     px(ctx, 13, 8, 22, 6, pRamp.sh);
   }
 
+  // Distinct Anime Front Bangs framing the forehead & cheeks (using per-boss hairColor)
+  if (traits.hairBangs === 'swept_dio') {
+    px(ctx, 12, 11, 5, 11, hairRamp.base);
+    px(ctx, 16, 12, 5, 6, hairRamp.hi);
+    px(ctx, 31, 11, 5, 11, hairRamp.sh);
+  } else if (traits.hairBangs === 'curtain_locks') {
+    px(ctx, 11, 12, 4, 15, hairRamp.sh);
+    px(ctx, 33, 12, 4, 15, hairRamp.sh);
+    px(ctx, 15, 12, 5, 5, hairRamp.base);
+    px(ctx, 28, 12, 5, 5, hairRamp.base);
+  } else if (traits.hairBangs === 'spiked_wild') {
+    px(ctx, 14, 11, 3, 7, hairRamp.base);
+    px(ctx, 21, 11, 4, 8, hairRamp.hi);
+    px(ctx, 29, 11, 3, 7, hairRamp.base);
+  } else if (traits.hairBangs === 'parted_aristocrat') {
+    px(ctx, 13, 12, 8, 4, hairRamp.base);
+    px(ctx, 27, 12, 8, 4, hairRamp.sh);
+  } else {
+    // braid_bangs
+    px(ctx, 12, 13, 3, 16, hairRamp.base);
+    px(ctx, 12, 17, 3, 2, '#fbbf24');
+    px(ctx, 33, 13, 3, 16, hairRamp.sh);
+    px(ctx, 33, 17, 3, 2, '#fbbf24');
+  }
+
   // Sharp inner portrait border
   ctx.strokeStyle = def.auraColor;
   ctx.lineWidth = 1;
@@ -430,35 +576,46 @@ export function drawWarriorPortrait(
   ctx: CanvasRenderingContext2D,
   weaponId: WeaponId,
   size = 40,
+  customization: WarriorCustomization = DEFAULT_WARRIOR_CUSTOMIZATION,
 ) {
   const scale = size / 32;
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.scale(scale, scale);
 
+  const cloakRamp = makeRamp(customization.cloakColor);
+  const armorRamp = makeRamp(customization.armorColor);
+  const plumeRamp = makeRamp(customization.plumeColor);
+
   px(ctx, 0, 0, 32, 32, '#140b12');
   px(ctx, 0, 18, 32, 14, '#2b121c');
-  // Crimson cape shoulders
-  px(ctx, 2, 22, 28, 10, '#7f1d1d');
-  px(ctx, 5, 22, 22, 10, '#be123c');
-  // Steel pauldrons & chestplate
-  px(ctx, 6, 21, 20, 11, '#cbd5e1');
-  px(ctx, 8, 22, 16, 10, '#94a3b8');
+  // Customized cape shoulders
+  px(ctx, 2, 22, 28, 10, cloakRamp.deep);
+  px(ctx, 5, 22, 22, 10, cloakRamp.base);
+  // Customized steel pauldrons & chestplate
+  px(ctx, 6, 21, 20, 11, armorRamp.base);
+  px(ctx, 8, 22, 16, 10, armorRamp.sh);
   px(ctx, 4, 20, 6, 5, '#f59e0b');
   px(ctx, 22, 20, 6, 5, '#f59e0b');
   // Plumed Knight Helm
-  px(ctx, 9, 2, 12, 6, '#f59e0b');
-  px(ctx, 11, 3, 9, 4, '#fef08a');
+  px(ctx, 9, 2, 12, 6, plumeRamp.base);
+  px(ctx, 11, 3, 9, 4, plumeRamp.hi);
   px(ctx, 8, 7, 16, 15, '#09060b');
-  px(ctx, 9, 8, 14, 13, '#e2e8f0');
+  px(ctx, 9, 8, 14, 13, armorRamp.hi);
   px(ctx, 9, 8, 14, 3, '#f8fafc');
   px(ctx, 10, 14, 12, 4, '#0f172a'); // Dark visor shadow
-  px(ctx, 12, 15, 3, 2, '#38bdf8'); // Anime glowing eyes
-  px(ctx, 18, 15, 3, 2, '#38bdf8');
+  px(ctx, 12, 15, 3, 2, customization.visorColor); // Customized visor eye glow
+  px(ctx, 18, 15, 3, 2, customization.visorColor);
   px(ctx, 13, 15, 1, 1, '#ffffff');
   px(ctx, 19, 15, 1, 1, '#ffffff');
-  // Vertical blade hint
-  px(ctx, 26, 4, 3, 24, weaponId === 'katana' ? '#f8fafc' : '#94a3b8');
+  // Vertical blade hint (blazing crimson-orange for Fire Sword!)
+  if (weaponId === 'fire_sword') {
+    px(ctx, 26, 3, 3, 25, '#dc2626');
+    px(ctx, 27, 4, 2, 22, '#fb923c');
+    px(ctx, 27, 6, 1, 17, '#fef08a');
+  } else {
+    px(ctx, 26, 4, 3, 24, weaponId === 'katana' ? '#f8fafc' : WEAPONS[weaponId].color);
+  }
 
   ctx.restore();
 }
@@ -708,47 +865,78 @@ export function getBakedBiomeWall(biome: BiomeId): HTMLCanvasElement {
     px(ctx, 30, 14, 18, 4, '#15803d');
     px(ctx, 174, 22, 22, 4, '#15803d');
   } else {
-    // Volcano Hell Citadel: dark volcanic ashlar, chained demon arch, magma grates & skulls
-    px(ctx, 0, 0, W, H, '#120404');
-    px(ctx, 0, 116, W, 154, '#250806');
-    for (let row = 0; row < 19; row++) {
+    // Reworked Volcano Hell Citadel: glowing volcanic caldera backdrop, obsidian basalt peaks, sulfur crystals, magma cascades & iron chains
+    px(ctx, 0, 0, W, H, '#120303');
+    px(ctx, 0, 32, W, 62, '#280705');
+    px(ctx, 0, 74, W, 56, '#4c0f08');
+    px(ctx, 0, 114, W, 156, '#1c0504');
+
+    // Distant jagged volcanic caldera cones & glowing magma craters
+    for (let vx = -20; vx < W + 40; vx += 64) {
+      px(ctx, vx + 8, 52, 48, 64, '#1b0504');
+      px(ctx, vx + 16, 38, 32, 22, '#240706');
+      px(ctx, vx + 22, 34, 20, 6, '#dc2626'); // Glowing volcano crater rim!
+      px(ctx, vx + 26, 35, 12, 3, '#fef08a');
+    }
+
+    // Chiseled Obsidian Basalt Ashlar Masonry with molten cracks
+    for (let row = 8; row < 19; row++) {
       const y = row * 12;
-      const offset = (row % 2) * 14;
-      for (let bx = -14 + offset; bx < W; bx += 28) {
-        px(ctx, bx, y, 27, 11, (row + bx) % 5 === 0 ? '#2b0e0c' : '#1f0908');
-        px(ctx, bx, y, 27, 1, '#4a1b16');
-        px(ctx, bx, y + 11, 28, 1, '#090202');
+      const offset = (row % 2) * 16;
+      for (let bx = -16 + offset; bx < W; bx += 32) {
+        px(ctx, bx, y, 31, 11, (row + bx) % 5 === 0 ? '#2b0b09' : '#1b0605');
+        px(ctx, bx, y, 31, 1, '#521914');
+        px(ctx, bx, y + 11, 32, 1, '#080101');
+        if ((row * 3 + bx) % 11 === 0) {
+          px(ctx, bx + 6, y + 4, 10, 2, '#f97316'); // Glowing ember vein inside basalt
+          px(ctx, bx + 9, y + 4, 4, 1, '#fef08a');
+        }
       }
     }
-    // Jagged basalt stalagmites
-    for (let x = 0; x < W; x += 24) {
-      const h = 36 + ((x * 13) % 44);
-      px(ctx, x, 224 - h, 22, h, '#190605');
-      px(ctx, x + 4, 224 - h - 10, 12, 12, '#190605');
-      px(ctx, x + 6, 224 - h - 8, 3, 10, '#3d1512');
+
+    // Hanging Obsidian Ceiling Stalactites & Glowing Sulfur Crystals
+    for (let cx = 6; cx < W; cx += 28) {
+      const sh = 16 + ((cx * 7) % 24);
+      px(ctx, cx, 0, 8, sh, '#120303');
+      px(ctx, cx + 2, 0, 4, sh + 7, '#2b0c09');
+      if (cx % 56 === 6) {
+        px(ctx, cx + 3, sh + 3, 2, 6, '#fb923c');
+      }
     }
-    // Carved demonic obsidian archway + twin skull keystones + chains
-    px(ctx, 64, 34, 124, 18, '#260d0b');
-    px(ctx, 64, 34, 124, 2, '#571e19');
-    px(ctx, 68, 52, 22, 172, '#1f0a09');
-    px(ctx, 72, 52, 5, 172, '#451814');
-    px(ctx, 162, 52, 22, 172, '#1f0a09');
-    px(ctx, 166, 52, 5, 172, '#451814');
-    px(ctx, 117, 35, 18, 15, '#57534e');
-    px(ctx, 120, 40, 3, 3, '#f97316');
-    px(ctx, 129, 40, 3, 3, '#f97316');
-    px(ctx, 122, 46, 8, 3, '#a8a29e');
-    // Hanging iron chains on left & right pillars
-    for (let cy = 54; cy < 150; cy += 8) {
-      px(ctx, 56, cy, 3, 5, '#57534e');
-      px(ctx, 194, cy, 3, 5, '#57534e');
+
+    // Jagged Basalt Stalagmites along Citadel Base
+    for (let x = 0; x < W; x += 22) {
+      const h = 34 + ((x * 13) % 42);
+      px(ctx, x, 224 - h, 20, h, '#140404');
+      px(ctx, x + 4, 224 - h - 10, 12, 12, '#1c0505');
+      px(ctx, x + 6, 224 - h - 8, 3, 10, '#4a1713');
     }
-    // Glowing lava sluice grate with iron bars
-    px(ctx, 114, 62, 24, 162, '#7c2d12');
-    px(ctx, 118, 66, 16, 158, '#ea580c');
-    px(ctx, 122, 70, 8, 154, '#fde047');
-    for (let gy = 76; gy < 210; gy += 22) {
-      px(ctx, 112, gy, 28, 3, '#1c0a09');
+
+    // Carved Demonic Obsidian Archway + Skull Keystone + Twin Glowing Lava Falls + Chains
+    px(ctx, 56, 30, 140, 20, '#260b09');
+    px(ctx, 56, 30, 140, 2, '#6d221c');
+    px(ctx, 60, 50, 24, 174, '#1b0706');
+    px(ctx, 65, 50, 6, 174, '#4c1813');
+    px(ctx, 168, 50, 24, 174, '#1b0706');
+    px(ctx, 173, 50, 6, 174, '#4c1813');
+    px(ctx, 117, 32, 18, 16, '#78716c');
+    px(ctx, 120, 37, 3, 3, '#fde047');
+    px(ctx, 129, 37, 3, 3, '#fde047');
+    px(ctx, 122, 43, 8, 3, '#d6d3d1');
+
+    // Hanging Forged Iron Chains
+    for (let cy = 50; cy < 156; cy += 8) {
+      px(ctx, 48, cy, 3, 5, '#64748b');
+      px(ctx, 202, cy, 3, 5, '#64748b');
+    }
+
+    // Multi-tier Glowing Molten Magma Cascade Sluice
+    px(ctx, 110, 56, 32, 168, '#7c2d12');
+    px(ctx, 114, 60, 24, 164, '#ea580c');
+    px(ctx, 119, 64, 14, 160, '#fbbf24');
+    px(ctx, 123, 66, 6, 158, '#fef9c3');
+    for (let gy = 74; gy < 214; gy += 22) {
+      px(ctx, 108, gy, 36, 3, '#170606');
     }
   }
 
@@ -768,7 +956,7 @@ export function getBakedJoJoBossSprite(
   pose: 'idle' | 'windup' | 'attack' | 'ko',
   battleSize: boolean,
 ): HTMLCanvasElement {
-  const key = `${def.index}_${pose}_${battleSize ? 'B' : 'C'}`;
+  const key = `${def.index}_${def.megaArchetype ?? 'std'}_${pose}_${battleSize ? 'B' : 'C'}`;
   const existing = bossSpriteCache.get(key);
   if (existing) return existing;
 
@@ -982,7 +1170,7 @@ export function getBakedJoJoBossSprite(
   px(ctx, bx + 6, by - 9, 6, 5, sRamp.base);
   px(ctx, bx + 12, by - 4, 3, 2, '#fbbf24'); // Heel spur
 
-  // Flowing Dynamic Coat Tail / Cape Behind Villain with diagonal cel-shaded folds
+  // Flowing Dynamic Outfit Behind & Over Villain across all 6 CoatStyles!
   if (def.coatStyle === 'cape' || def.coatStyle === 'trench') {
     px(ctx, bx + 8 + lean, by - 60, 17, 19, pRamp.ink);
     px(ctx, bx + 12 + lean, by - 41, 17, 19, pRamp.ink);
@@ -990,21 +1178,35 @@ export function getBakedJoJoBossSprite(
     px(ctx, bx + 9 + lean, by - 59, 15, 18, pRamp.deep);
     px(ctx, bx + 13 + lean, by - 41, 15, 18, pRamp.sh);
     px(ctx, bx + 16 + lean, by - 22, 13, 11, pRamp.base);
-    px(ctx, bx + 19 + lean, by - 35, 3, 18, pRamp.hi); // Silk fold rim
-    px(ctx, bx + 16 + lean, by - 13, 12, 2, '#fbbf24'); // Gold hem trim
+    px(ctx, bx + 19 + lean, by - 35, 3, 18, pRamp.hi);
+    px(ctx, bx + 16 + lean, by - 13, 12, 2, '#fbbf24');
   } else if (def.coatStyle === 'spiked_mantle') {
     px(ctx, bx - 23 + lean, by - 70, 10, 10, sRamp.base);
     px(ctx, bx - 26 + lean, by - 74, 5, 5, sRamp.hi);
     px(ctx, bx + 13 + lean, by - 70, 10, 10, sRamp.base);
     px(ctx, bx + 21 + lean, by - 74, 5, 5, sRamp.hi);
+  } else if (def.coatStyle === 'robes') {
+    // Sweeping warlock/cardinal split lower vestments over boots
+    px(ctx, bx - 16 + lean, by - 35, 32, 23, pRamp.ink);
+    px(ctx, bx - 15 + lean, by - 34, 30, 21, pRamp.sh);
+    px(ctx, bx - 5 + lean, by - 34, 10, 20, sRamp.base);
+    px(ctx, bx - 15 + lean, by - 15, 30, 2, '#fbbf24');
+  } else if (def.coatStyle === 'armor') {
+    // Layered gothic steel shoulder pauldrons & tassets
+    px(ctx, bx - 21 + lean, by - 67, 11, 11, '#09060b');
+    px(ctx, bx - 20 + lean, by - 66, 9, 9, '#94a3b8');
+    px(ctx, bx - 19 + lean, by - 66, 6, 4, '#e2e8f0');
+    px(ctx, bx + 10 + lean, by - 67, 11, 11, '#09060b');
+    px(ctx, bx + 11 + lean, by - 66, 9, 9, '#94a3b8');
+    px(ctx, bx + 12 + lean, by - 66, 6, 4, '#cbd5e1');
   }
 
   // Broad Shoulders + Tapered V-Shaped Heroic Waist + Gold Buttons & Chain
   px(ctx, bx - 17 + lean, by - 65, 34, 16, pRamp.ink);
   px(ctx, bx - 14 + lean, by - 49, 28, 12, pRamp.ink);
   px(ctx, bx - 15 + lean, by - 37, 30, 7, pRamp.ink);
-  px(ctx, bx - 16 + lean, by - 64, 32, 15, pRamp.base);
-  px(ctx, bx - 13 + lean, by - 49, 26, 12, pRamp.base);
+  px(ctx, bx - 16 + lean, by - 64, 32, 15, def.coatStyle === 'vest' ? sRamp.base : pRamp.base);
+  px(ctx, bx - 13 + lean, by - 49, 26, 12, def.coatStyle === 'vest' ? sRamp.sh : pRamp.base);
   px(ctx, bx - 16 + lean, by - 64, 5, 15, pRamp.hi);
   px(ctx, bx + 10 + lean, by - 64, 6, 15, pRamp.sh);
   // Gold lapel emblem pins & buttons
@@ -1018,13 +1220,25 @@ export function getBakedJoJoBossSprite(
   px(ctx, bx - 7 + lean, by - 64, 4, 15, skinRamp.sh);
   px(ctx, bx - 5 + lean, by - 55, 10, 2, skinRamp.ink);
   px(ctx, bx - 2 + lean, by - 52, 4, 11, skinRamp.sh);
-  px(ctx, bx - 3 + lean, by - 61, 6, 2, '#fbbf24'); // Collar chain
-  px(ctx, bx - 1 + lean, by - 59, 3, 3, def.auraColor); // Chest gem
-  // Ornate JoJo Waist Belt & Emblem Buckle
+  px(ctx, bx - 3 + lean, by - 61, 6, 2, '#fbbf24');
+  px(ctx, bx - 1 + lean, by - 59, 3, 3, def.auraColor);
+  // Ornate JoJo Waist Belt & Per-Boss Emblem Buckle ('star'|'clock'|'skull'|'diamond'|'eye'|'flame')
   px(ctx, bx - 14 + lean, by - 38, 28, 5, '#09060b');
   px(ctx, bx - 13 + lean, by - 37, 26, 3, sRamp.base);
-  px(ctx, bx - 4 + lean, by - 38, 8, 5, '#fbbf24');
-  px(ctx, bx - 2 + lean, by - 37, 4, 3, def.auraColor);
+  px(ctx, bx - 4 + lean, by - 39, 8, 6, '#fbbf24');
+  if (def.emblem === 'skull') {
+    px(ctx, bx - 2 + lean, by - 38, 4, 4, '#f8fafc');
+    px(ctx, bx - 2 + lean, by - 37, 1, 1, '#09060b');
+    px(ctx, bx + 1 + lean, by - 37, 1, 1, '#09060b');
+  } else if (def.emblem === 'flame') {
+    px(ctx, bx - 2 + lean, by - 39, 4, 5, '#f97316');
+    px(ctx, bx - 1 + lean, by - 38, 2, 3, '#fef08a');
+  } else if (def.emblem === 'eye') {
+    px(ctx, bx - 3 + lean, by - 37, 6, 3, '#ffffff');
+    px(ctx, bx - 1 + lean, by - 37, 2, 3, def.auraColor);
+  } else {
+    px(ctx, bx - 2 + lean, by - 38, 4, 4, def.auraColor);
+  }
   // Dramatic High Upturned Coat Collars framing neck
   px(ctx, bx - 12 + lean, by - 73, 5, 16, sRamp.ink);
   px(ctx, bx - 11 + lean, by - 72, 4, 14, sRamp.base);
@@ -1124,8 +1338,44 @@ export function getBakedJoJoBossSprite(
     px(ctx, hx + 5, hy + 17, 6, 3, '#64748b');
   }
 
-  // Sculpted Anime Hair & Headgear framing the face
-  if (def.hatStyle === 'crown') {
+  // Sculpted Anime Hair & Headgear framing the face (with Mega Boss DIO & Undead Dread Knight bespoke flourishes!)
+  if (def.megaArchetype === 'mega_dio') {
+    // Spiky radiant golden-yellow DIO hair + green heart headband + glowing crimson eyes + twin vibrant swords!
+    px(ctx, hx - 5, hy - 12, 6, 12, '#eab308');
+    px(ctx, hx + 1, hy - 15, 7, 15, '#facc15');
+    px(ctx, hx + 8, hy - 14, 7, 14, '#fef08a');
+    px(ctx, hx + 14, hy - 10, 5, 11, '#eab308');
+    px(ctx, hx - 1, hy - 2, 18, 3, '#09060b');
+    px(ctx, hx + 1, hy - 1, 14, 2, '#eab308');
+    px(ctx, hx + 5, hy - 2, 4, 3, '#22c55e');
+    // Vibrant Dual Vampire Swords held at the ready!
+    const swX = pose === 'attack' ? bx - 50 : bx - 36;
+    const swY = pose === 'attack' ? by - 64 : by - 56;
+    px(ctx, swX, swY, 22, 3, '#22d3ee');
+    px(ctx, swX + 1, swY + 1, 20, 1, '#ffffff');
+    px(ctx, swX + 20, swY - 2, 4, 7, '#fde047');
+    px(ctx, swX + 4, swY + 12, 18, 3, '#f43f5e');
+    px(ctx, swX + 5, swY + 13, 16, 1, '#fef08a');
+  } else if (def.megaArchetype === 'mega_undead_knight') {
+    // Horned Dread Skull Helm + Neon Soulfire Visor + Colossal Rune Greatsword!
+    px(ctx, hx - 6, hy - 15, 5, 14, '#8b5cf6');
+    px(ctx, hx - 5, hy - 14, 3, 11, '#f8fafc');
+    px(ctx, hx + 17, hy - 15, 5, 14, '#8b5cf6');
+    px(ctx, hx + 18, hy - 14, 3, 11, '#f8fafc');
+    px(ctx, hx - 2, hy - 5, 20, 19, '#1e293b');
+    px(ctx, hx, hy - 3, 16, 6, '#64748b');
+    px(ctx, hx + 1, hy + 5, 14, 8, '#09060b');
+    px(ctx, hx + 3, hy + 7, 4, 2, '#34d399');
+    px(ctx, hx + 9, hy + 7, 4, 2, '#34d399');
+    // Colossal glowing violet-cyan rune greatsword!
+    const gsX = pose === 'attack' ? bx - 54 : bx - 38;
+    const gsY = pose === 'attack' ? by - 72 : by - 64;
+    px(ctx, gsX, gsY, 5, 36, '#09060b');
+    px(ctx, gsX + 1, gsY + 1, 3, 34, '#8b5cf6');
+    px(ctx, gsX + 2, gsY + 2, 1, 32, '#22d3ee');
+    px(ctx, gsX - 4, gsY + 32, 13, 3, '#fbbf24');
+    px(ctx, bx - 3 + lean, by - 58, 6, 6, '#e879f9'); // Glowing chest soulfire rune
+  } else if (def.hatStyle === 'crown') {
     px(ctx, hx - 2, hy - 3, 20, 6, pRamp.sh);
     px(ctx, hx + 14, hy + 2, 4, 12, pRamp.deep);
     px(ctx, hx, hy - 8, 16, 6, '#f59e0b');
@@ -1189,10 +1439,14 @@ const warriorBattleCache = new Map<string, HTMLCanvasElement>();
 export function getBakedWarriorBattleSprite(
   weaponId: WeaponId,
   isSlashing: boolean,
+  customization: WarriorCustomization = DEFAULT_WARRIOR_CUSTOMIZATION,
 ): HTMLCanvasElement {
-  const key = `${weaponId}_${isSlashing ? 'atk' : 'idle'}`;
+  const key = `${weaponId}_${isSlashing ? 'atk' : 'idle'}_${customization.cloakColor}_${customization.armorColor}_${customization.visorColor}_${customization.plumeColor}`;
   const cached = warriorBattleCache.get(key);
   if (cached) return cached;
+  if (warriorBattleCache.size > 40) {
+    warriorBattleCache.clear();
+  }
 
   const c = document.createElement('canvas');
   c.width = 76;
@@ -1200,18 +1454,21 @@ export function getBakedWarriorBattleSprite(
   const ctx = c.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
+  const cloakRamp = makeRamp(customization.cloakColor);
+  const armorRamp = makeRamp(customization.armorColor);
+  const plumeRamp = makeRamp(customization.plumeColor);
   const weapon = WEAPONS[weaponId];
   const bx = 28;
   const by = 65;
 
-  // Flowing multi-fold crimson royal cape with notched tattered hem & gold trim
+  // Flowing multi-fold customized royal cape with notched tattered hem & gold trim
   px(ctx, bx - 24, by - 42, 20, 30, '#09060b');
-  px(ctx, bx - 23, by - 41, 18, 28, '#7f1d1d');
-  px(ctx, bx - 21, by - 40, 14, 22, '#be123c');
-  px(ctx, bx - 18, by - 39, 7, 13, '#e11d48');
+  px(ctx, bx - 23, by - 41, 18, 28, cloakRamp.deep);
+  px(ctx, bx - 21, by - 40, 14, 22, cloakRamp.base);
+  px(ctx, bx - 18, by - 39, 7, 13, cloakRamp.hi);
   px(ctx, bx - 26, by - 22, 10, 14, '#09060b');
-  px(ctx, bx - 25, by - 21, 8, 12, '#7f1d1d');
-  px(ctx, bx - 23, by - 20, 5, 7, '#be123c');
+  px(ctx, bx - 25, by - 21, 8, 12, cloakRamp.deep);
+  px(ctx, bx - 23, by - 20, 5, 7, cloakRamp.base);
   px(ctx, bx - 24, by - 11, 14, 2, '#f59e0b'); // Gold cloak border hem
 
   // 1px dark manga ink outline around knight frame
@@ -1219,86 +1476,86 @@ export function getBakedWarriorBattleSprite(
 
   // Heroic V-stance armored greaves, cuisses, flanged knee-cops & pointed sabatons
   px(ctx, bx - 10, by - 18, 8, 18, '#09060b');
-  px(ctx, bx - 9, by - 17, 6, 16, '#475569');
-  px(ctx, bx - 8, by - 16, 3, 12, '#94a3b8');
+  px(ctx, bx - 9, by - 17, 6, 16, armorRamp.sh);
+  px(ctx, bx - 8, by - 16, 3, 12, armorRamp.base);
   px(ctx, bx + 2, by - 18, 8, 18, '#09060b');
-  px(ctx, bx + 3, by - 17, 6, 16, '#94a3b8');
-  px(ctx, bx + 5, by - 16, 3, 12, '#e2e8f0');
-  // Brass-rimmed knee plates
+  px(ctx, bx + 3, by - 17, 6, 16, armorRamp.base);
+  px(ctx, bx + 5, by - 16, 3, 12, armorRamp.hi);
   px(ctx, bx - 10, by - 12, 7, 5, '#09060b');
   px(ctx, bx - 9, by - 11, 5, 3, '#d97706');
   px(ctx, bx + 2, by - 12, 8, 5, '#09060b');
   px(ctx, bx + 3, by - 11, 6, 3, '#fbbf24');
-  // Pointed sabatons with steel toe-cap gleam
-  px(ctx, bx - 12, by - 5, 10, 5, '#1e293b');
-  px(ctx, bx + 2, by - 5, 12, 5, '#334155');
-  px(ctx, bx + 6, by - 4, 6, 2, '#cbd5e1');
+  px(ctx, bx - 12, by - 5, 10, 5, armorRamp.deep);
+  px(ctx, bx + 2, by - 5, 12, 5, armorRamp.sh);
+  px(ctx, bx + 6, by - 4, 6, 2, armorRamp.hi);
 
   // Cel-shaded fluted breastplate, diagonal leather baldric & gold crest
-  px(ctx, bx - 10, by - 35, 20, 18, '#64748b');
-  px(ctx, bx - 9, by - 34, 9, 15, '#94a3b8');
-  px(ctx, bx + 1, by - 34, 8, 13, '#e2e8f0');
+  px(ctx, bx - 10, by - 35, 20, 18, armorRamp.sh);
+  px(ctx, bx - 9, by - 34, 9, 15, armorRamp.base);
+  px(ctx, bx + 1, by - 34, 8, 13, armorRamp.hi);
   px(ctx, bx + 4, by - 33, 4, 8, '#f8fafc');
-  // Diagonal brown leather baldric strap + brass buckle across chest
   for (let b = 0; b < 11; b++) {
     px(ctx, bx - 8 + b, by - 33 + b, 3, 2, '#78350f');
   }
   px(ctx, bx - 4, by - 29, 3, 3, '#fbbf24');
-  // Crimson-gold royal tabard & tassets
-  px(ctx, bx - 4, by - 24, 8, 9, '#9f1239');
+  // Customized royal tabard & tassets
+  px(ctx, bx - 4, by - 24, 8, 9, cloakRamp.base);
   px(ctx, bx - 1, by - 23, 2, 6, '#fbbf24');
   px(ctx, bx - 10, by - 20, 20, 4, '#09060b');
   px(ctx, bx - 9, by - 19, 18, 2, '#d97706');
   px(ctx, bx - 2, by - 20, 4, 4, '#fde047');
 
-  // 3-lame layered shoulder pauldrons with brass trim & rivets
+  // 3-lame layered shoulder pauldrons
   px(ctx, bx - 15, by - 37, 10, 9, '#09060b');
   px(ctx, bx - 14, by - 36, 8, 3, '#f59e0b');
-  px(ctx, bx - 14, by - 33, 7, 2, '#94a3b8');
+  px(ctx, bx - 14, by - 33, 7, 2, armorRamp.base);
   px(ctx, bx - 13, by - 31, 6, 2, '#d97706');
   px(ctx, bx - 12, by - 36, 3, 2, '#fef08a');
   px(ctx, bx + 5, by - 37, 10, 9, '#09060b');
   px(ctx, bx + 6, by - 36, 8, 3, '#d97706');
-  px(ctx, bx + 6, by - 33, 7, 2, '#cbd5e1');
+  px(ctx, bx + 6, by - 33, 7, 2, armorRamp.hi);
   px(ctx, bx + 7, by - 36, 4, 2, '#fde047');
 
-  // Sculpted Armet Knight Helm with visor ridge, breathing slits, eye gleam & 3-strand plume
-  px(ctx, bx - 9, by - 50, 18, 15, '#64748b');
+  // Sculpted Armet Knight Helm with visor glow & 3-strand plume
+  px(ctx, bx - 9, by - 50, 18, 15, armorRamp.sh);
   px(ctx, bx - 8, by - 49, 15, 4, '#f8fafc');
-  px(ctx, bx - 2, by - 46, 11, 11, '#cbd5e1');
-  px(ctx, bx - 9, by - 47, 18, 2, '#d97706'); // Gold crown-band fillet
-  px(ctx, bx - 1, by - 43, 10, 4, '#09060b'); // Deep visor slit
-  px(ctx, bx + 2, by - 42, 4, 2, isSlashing ? '#fef08a' : '#38bdf8');
+  px(ctx, bx - 2, by - 46, 11, 11, armorRamp.base);
+  px(ctx, bx - 9, by - 47, 18, 2, '#d97706');
+  px(ctx, bx - 1, by - 43, 10, 4, '#09060b');
+  px(ctx, bx + 2, by - 42, 4, 2, isSlashing ? '#fef08a' : customization.visorColor);
   px(ctx, bx + 4, by - 42, 2, 1, '#ffffff');
-  // Breathing grille slots on lower bevor
   px(ctx, bx + 2, by - 38, 1, 2, '#09060b');
   px(ctx, bx + 4, by - 38, 1, 2, '#09060b');
   px(ctx, bx + 6, by - 38, 1, 2, '#09060b');
-  // Sweeping 3-strand golden helm plume crest
   px(ctx, bx - 8, by - 57, 14, 7, '#09060b');
-  px(ctx, bx - 7, by - 56, 12, 5, '#fbbf24');
-  px(ctx, bx - 5, by - 56, 8, 2, '#fef08a');
-  px(ctx, bx - 15, by - 54, 9, 4, '#d97706');
-  px(ctx, bx - 19, by - 50, 7, 3, '#f59e0b');
+  px(ctx, bx - 7, by - 56, 12, 5, plumeRamp.base);
+  px(ctx, bx - 5, by - 56, 8, 2, plumeRamp.hi);
+  px(ctx, bx - 15, by - 54, 9, 4, plumeRamp.sh);
+  px(ctx, bx - 19, by - 50, 7, 3, plumeRamp.base);
 
-  // Equipped Weapon Blade + Gauntlet (unique crafted geometry per WeaponId!)
+  // Equipped Weapon Blade + Gauntlet
   if (isSlashing) {
-    px(ctx, bx + 11, by - 33, 8, 6, '#e2e8f0');
+    px(ctx, bx + 11, by - 33, 8, 6, armorRamp.hi);
     px(ctx, bx + 17, by - 37, 5, 13, weapon.accentColor);
     if (weaponId === 'crescent') {
       px(ctx, bx + 20, by - 42, 20, 15, '#09060b');
       px(ctx, bx + 21, by - 41, 18, 13, weapon.color);
       px(ctx, bx + 24, by - 37, 10, 6, '#09060b');
+    } else if (weaponId === 'fire_sword') {
+      // Massive blazing crimson-orange Fire Sword horizontal inferno sweep
+      px(ctx, bx + 19, by - 38, 28, 11, '#7f1d1d');
+      px(ctx, bx + 20, by - 36, 26, 7, '#dc2626');
+      px(ctx, bx + 21, by - 35, 24, 4, '#fb923c');
+      px(ctx, bx + 22, by - 34, 19, 2, '#fef08a');
     } else {
       px(ctx, bx + 20, by - 35, 24, 5, '#09060b');
       px(ctx, bx + 21, by - 34, 22, 3, weapon.color);
       px(ctx, bx + 22, by - 34, 19, 1, '#ffffff');
     }
   } else {
-    px(ctx, bx + 9, by - 31, 6, 6, '#cbd5e1');
+    px(ctx, bx + 9, by - 31, 6, 6, armorRamp.base);
     px(ctx, bx + 11, by - 34, 4, 10, weapon.accentColor);
     if (weaponId === 'katana') {
-      // Curved katana silhouette + circular tsuba + white edge
       px(ctx, bx + 10, by - 32, 7, 2, '#fbbf24');
       for (let k = 0; k < 26; k++) {
         const curve = Math.floor((k * k) / 170);
@@ -1306,22 +1563,31 @@ export function getBakedWarriorBattleSprite(
         px(ctx, bx + 14 + curve, by - 33 - k, 2, 1, weapon.color);
       }
     } else if (weaponId === 'crescent') {
-      // Twin-curved Crescent Scimitar/Halberd moon head
       px(ctx, bx + 13, by - 57, 4, 27, '#09060b');
       px(ctx, bx + 14, by - 56, 2, 25, '#94a3b8');
       px(ctx, bx + 16, by - 58, 7, 14, weapon.color);
       px(ctx, bx + 18, by - 55, 5, 8, '#ffffff');
+    } else if (weaponId === 'fire_sword') {
+      // OP Fire Sword: jagged crimson-orange flame greatsword with molten yellow spine!
+      px(ctx, bx + 10, by - 34, 9, 3, '#dc2626');
+      px(ctx, bx + 13, by - 63, 7, 30, '#450a0a');
+      px(ctx, bx + 14, by - 62, 5, 28, '#dc2626');
+      px(ctx, bx + 15, by - 61, 4, 26, '#fb923c');
+      px(ctx, bx + 16, by - 59, 2, 22, '#fde047');
+      px(ctx, bx + 12, by - 52, 2, 4, '#f97316');
+      px(ctx, bx + 19, by - 46, 2, 5, '#fb923c');
+      px(ctx, bx + 12, by - 40, 2, 4, '#ef4444');
     } else if (weaponId === 'runeblade') {
       px(ctx, bx + 13, by - 60, 6, 30, '#09060b');
       px(ctx, bx + 14, by - 59, 4, 28, weapon.color);
-      px(ctx, bx + 15, by - 56, 2, 3, '#c084fc'); // Glowing arcane runes
+      px(ctx, bx + 15, by - 56, 2, 3, '#c084fc');
       px(ctx, bx + 15, by - 49, 2, 3, '#e879f9');
       px(ctx, bx + 15, by - 42, 2, 3, '#c084fc');
     } else {
       px(ctx, bx + 13, by - 59, 5, 29, '#09060b');
       px(ctx, bx + 14, by - 58, 3, 27, weapon.color);
       px(ctx, bx + 15, by - 56, 1, 23, '#ffffff');
-      px(ctx, bx + 12, by - 32, 2, 2, '#ef4444'); // Crossguard ruby gem
+      px(ctx, bx + 12, by - 32, 2, 2, '#ef4444');
     }
   }
 
@@ -1465,6 +1731,22 @@ export function getBakedWeaponIcon(weaponId: WeaponId): HTMLCanvasElement {
     px(ctx, 6, 20, 7, 7, '#09060b');
     px(ctx, 7, 21, 5, 5, '#fbbf24');
     px(ctx, 8, 22, 2, 2, '#fef08a');
+  } else if (weaponId === 'fire_sword') {
+    // OP Fire Sword: serrated blazing crimson-orange flame blade with white-hot core!
+    px(ctx, 2, 2, 28, 28, '#1a0606');
+    for (let i = 0; i < 19; i++) {
+      px(ctx, 6 + i, 22 - i, 6, 6, '#450a0a');
+      px(ctx, 7 + i, 22 - i, 4, 4, '#dc2626');
+      px(ctx, 8 + i, 22 - i, 3, 3, '#fb923c');
+      px(ctx, 9 + i, 22 - i, 1, 1, '#fef08a');
+      if (i % 3 === 1) {
+        px(ctx, 6 + i, 19 - i, 2, 3, '#f97316');
+        px(ctx, 11 + i, 24 - i, 2, 3, '#ef4444');
+      }
+    }
+    px(ctx, 5, 19, 9, 3, '#fbbf24');
+    px(ctx, 8, 22, 3, 6, '#991b1b');
+    px(ctx, 4, 25, 4, 4, '#f97316');
   } else {
     // Claymore
     for (let i = 0; i < 19; i++) {
@@ -1538,5 +1820,184 @@ export function getBakedSkillIcon(skillId: SkillId): HTMLCanvasElement {
   skillIconCache.set(skillId, c);
   return c;
 }
+
+const starPlatinumCache = new Map<string, HTMLCanvasElement>();
+
+/**
+ * Baked 64x52 pixel-art Star Platinum guardian spirit styled in Bastera's dark royal armor theme:
+ * Indigo-violet spiked hair, golden royal crown circlet, crimson sash, armored pauldrons, and spiked punch gauntlets.
+ */
+export function getBakedStarPlatinumSprite(frame: 0 | 1): HTMLCanvasElement {
+  const key = `sp_${frame}`;
+  const existing = starPlatinumCache.get(key);
+  if (existing) return existing;
+
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 52;
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+
+  // Ethereal royal aura wisps behind spirit
+  px(ctx, 2, 10, 4, 22, 'rgba(167, 139, 250, 0.35)');
+  px(ctx, 6, 4, 6, 30, 'rgba(139, 92, 246, 0.25)');
+
+  // Flowing indigo-violet spiky hair + royal golden Bastera circlet
+  px(ctx, 13, 3, 14, 10, '#09060b');
+  px(ctx, 14, 4, 12, 8, '#312e81');
+  px(ctx, 11, 6, 4, 4, '#4c1d95');
+  px(ctx, 15, 2, 4, 4, '#6366f1');
+  px(ctx, 21, 3, 4, 4, '#4f46e5');
+  // Face + glowing cyan eyes + determined brow
+  px(ctx, 16, 10, 10, 9, '#7c3aed');
+  px(ctx, 17, 11, 8, 7, '#a78bfa');
+  px(ctx, 16, 9, 11, 2, '#fbbf24'); // Golden royal headband
+  px(ctx, 20, 9, 2, 2, '#dc2626'); // Ruby centerpiece
+  px(ctx, 19, 12, 3, 2, '#09060b');
+  px(ctx, 23, 12, 3, 2, '#09060b');
+  px(ctx, 20, 12, 2, 2, '#22d3ee'); // Glowing cyan eyes
+  px(ctx, 24, 12, 2, 2, '#22d3ee');
+
+  // Muscular violet torso + royal crimson sash + golden Bastera shoulder pauldrons
+  px(ctx, 12, 19, 18, 17, '#09060b');
+  px(ctx, 13, 20, 16, 15, '#6d28d9');
+  px(ctx, 15, 21, 11, 8, '#8b5cf6');
+  px(ctx, 16, 22, 4, 4, '#a78bfa');
+  px(ctx, 21, 22, 4, 4, '#a78bfa');
+  // Royal crimson scarf & golden waist belt
+  px(ctx, 11, 19, 19, 3, '#9f1239');
+  px(ctx, 8, 22, 5, 10, '#be123c');
+  px(ctx, 14, 33, 14, 3, '#fbbf24');
+  // Armored Pauldrons with golden trim
+  px(ctx, 9, 19, 6, 7, '#d97706');
+  px(ctx, 10, 20, 4, 4, '#fef08a');
+  px(ctx, 25, 19, 6, 7, '#d97706');
+  px(ctx, 26, 20, 4, 4, '#fef08a');
+
+  // Spectral lower taper (floating spirit silhouette)
+  px(ctx, 14, 36, 12, 8, '#4c1d95');
+  px(ctx, 16, 44, 8, 5, '#7c3aed');
+  px(ctx, 18, 48, 4, 3, '#c4b5fd');
+
+  // Rapid-fire ORA ORA spiked golden-violet punch barrage fists!
+  const f1X = frame === 0 ? 34 : 44;
+  const f2X = frame === 0 ? 46 : 32;
+  const f3X = frame === 0 ? 39 : 49;
+
+  // Motion speed streaks
+  px(ctx, 27, 17, f1X - 25, 2, '#ddd6fe');
+  px(ctx, 27, 25, f2X - 25, 2, '#c4b5fd');
+  px(ctx, 27, 31, f3X - 25, 2, '#fbbf24');
+
+  // Fist 1 (upper)
+  px(ctx, f1X, 14, 11, 7, '#09060b');
+  px(ctx, f1X + 1, 15, 9, 5, '#a78bfa');
+  px(ctx, f1X + 7, 15, 3, 5, '#fbbf24'); // Spiked brass knuckle
+  px(ctx, f1X + 11, 16, 2, 3, '#ffffff');
+
+  // Fist 2 (middle)
+  px(ctx, f2X, 22, 12, 7, '#09060b');
+  px(ctx, f2X + 1, 23, 10, 5, '#8b5cf6');
+  px(ctx, f2X + 8, 23, 3, 5, '#fef08a');
+  px(ctx, f2X + 12, 24, 2, 3, '#ffffff');
+
+  // Fist 3 (lower)
+  px(ctx, f3X, 29, 10, 6, '#09060b');
+  px(ctx, f3X + 1, 30, 8, 4, '#a78bfa');
+  px(ctx, f3X + 6, 30, 3, 4, '#fbbf24');
+
+  starPlatinumCache.set(key, c);
+  return c;
+}
+
+const floorStripCache = new Map<BiomeId, HTMLCanvasElement>();
+
+/**
+ * Pre-baked seamless 640x46 biome floor strip (replaces 40+ per-tile fillRect calls per frame with 1 drawImage!).
+ */
+export function getBakedFloorStrip(biome: BiomeId): HTMLCanvasElement {
+  const existing = floorStripCache.get(biome);
+  if (existing) return existing;
+
+  const W = 640;
+  const H = 46;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+
+  // y=2 corresponds to plat.y (top surface bevel begins at y=0)
+  if (biome === 'castle') {
+    px(ctx, 0, 2, W, 44, '#140e12');
+    px(ctx, 0, 0, W, 6, '#362730');
+    for (let bx = 0; bx < W; bx += 24) {
+      const tileIdx = Math.floor(bx / 24);
+      const broken = tileIdx % 5 === 0;
+      const mossy = tileIdx % 7 === 0;
+      px(ctx, bx, 0, 22, 4, broken ? '#2a1e24' : '#4a3742');
+      px(ctx, bx, 0, 22, 1, '#6b5361');
+      px(ctx, bx + 22, 0, 2, 5, '#0b0709');
+      px(ctx, bx, 8, 22, 10, broken ? '#1b1318' : '#32242c');
+      px(ctx, bx, 8, 22, 2, '#4d3944');
+      px(ctx, bx + 8, 20, 22, 10, '#271c22');
+      px(ctx, bx + 8, 20, 22, 1, '#3d2d36');
+      px(ctx, bx, 32, 22, 12, '#1b1317');
+      if (broken) {
+        px(ctx, bx + 6, 10, 2, 7, '#090609');
+        px(ctx, bx + 8, 13, 5, 2, '#090609');
+      }
+      if (mossy) {
+        px(ctx, bx + 2, 6, 7, 2, '#166534');
+        px(ctx, bx + 4, 8, 3, 2, '#22c55e');
+      }
+    }
+    px(ctx, 0, 1, W, 6, '#5c1118');
+    px(ctx, 0, 2, W, 4, '#be123c');
+    px(ctx, 0, 1, W, 1, '#fbbf24');
+    px(ctx, 0, 6, W, 1, '#b45309');
+    for (let gx = 4; gx < W; gx += 16) {
+      if (gx % 112 !== 0) {
+        px(ctx, gx, 3, 5, 2, '#fde047');
+        px(ctx, gx + 2, 2, 1, 4, '#fbbf24');
+        if (gx % 32 === 4) {
+          px(ctx, gx + 1, 7, 2, 2, '#f59e0b');
+        }
+      } else {
+        px(ctx, gx - 2, 1, 9, 6, '#32242c');
+        px(ctx, gx - 3, 5, 2, 2, '#f59e0b');
+        px(ctx, gx + 7, 5, 2, 2, '#f59e0b');
+      }
+    }
+  } else if (biome === 'forest') {
+    px(ctx, 0, 2, W, 44, '#0d1a16');
+    px(ctx, 0, 0, W, 6, '#1b4735');
+    px(ctx, 0, 0, W, 1, '#6ee7b7');
+    for (let bx = 0; bx < W; bx += 20) {
+      px(ctx, bx, 8, 18, 12, '#182b24');
+      px(ctx, bx, 8, 18, 2, '#284a3d');
+      px(ctx, bx + 4, 1, 8, 2, '#34d399');
+    }
+  } else {
+    px(ctx, 0, 2, W, 44, '#130505');
+    px(ctx, 0, 0, W, 6, '#431410');
+    px(ctx, 0, 0, W, 1, '#fb923c');
+    for (let bx = 0; bx < W; bx += 28) {
+      const tileIdx = Math.floor(bx / 28);
+      px(ctx, bx, 1, 25, 4, tileIdx % 3 === 0 ? '#5c1914' : '#42120f');
+      px(ctx, bx, 8, 24, 12, '#260b0a');
+      px(ctx, bx, 8, 24, 2, '#5e201a');
+      px(ctx, bx + 6, 21, 16, 12, '#1c0807');
+      px(ctx, bx + 4, 24, 16, 4, '#ea580c');
+      if (tileIdx % 4 === 0) {
+        px(ctx, bx + 9, 25, 6, 2, '#fde047');
+      }
+    }
+  }
+
+  floorStripCache.set(biome, c);
+  return c;
+}
+
 
 

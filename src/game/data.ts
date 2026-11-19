@@ -170,12 +170,12 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   },
   stand_rush: {
     id: 'stand_rush',
-    name: 'ORA Barrage',
-    shortTag: 'RUSH',
-    description: 'Summon your Spectral Knight Spirit for a rapid 5-hit flurry.',
-    cooldown: 4.5,
-    staminaCost: 26,
-    damageMultiplier: 2.4,
+    name: 'ORA ORA',
+    shortTag: 'ORA ORA',
+    description: 'Summon a Bastera-themed Star Platinum spirit that punches enemies rapidly for 2.5s.',
+    cooldown: 5.5,
+    staminaCost: 24,
+    damageMultiplier: 2.5,
     color: '#a78bfa',
   },
   sunburst_cleave: {
@@ -242,14 +242,14 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
 
 export function getBiomeForBossIndex(bossNumber: number): BiomeId {
   if (bossNumber <= BOSSES_PER_BIOME) return 'castle';
-  if (bossNumber <= BOSSES_PER_BIOME * 2) return 'forest';
-  return 'volcano';
+  if (bossNumber <= BOSSES_PER_BIOME * 2) return 'volcano';
+  return 'forest';
 }
 
 export function getBiomeDisplayName(biome: BiomeId): string {
   if (biome === 'castle') return 'Abandoned Royal Castle';
-  if (biome === 'forest') return 'Enchanted Ruins Forest';
-  return 'Volcano Hell Citadel';
+  if (biome === 'volcano') return 'Volcano Hell Citadel';
+  return 'Enchanted Ruins Forest';
 }
 
 const JOJO_PREFIXES = [
@@ -512,8 +512,8 @@ export function getBossDef(bossIndex: number): BossDef {
   const auraColor = hslHex(hue + 195, 88, 66);
 
   const attackSys = ATTACK_SYSTEMS[(zero * 3 + Math.floor(zero / 8)) % ATTACK_SYSTEMS.length];
-  const opener = VOICE_OPENERS[(zero * 7 + 1) % VOICE_OPENERS.length];
-  const body = VOICE_BODIES[(zero * 11 + 3) % VOICE_BODIES.length];
+  const opener = VOICE_OPENERS[(zero * 7 + Math.floor(zero / 10)) % VOICE_OPENERS.length];
+  const body = VOICE_BODIES[(zero * 11 + Math.floor(zero / 12)) % VOICE_BODIES.length];
   const defeatTpl = DEFEAT_LINES[(zero * 5 + 2) % DEFEAT_LINES.length];
 
   const fillTokens = (tpl: string) =>
@@ -525,7 +525,10 @@ export function getBossDef(bossIndex: number): BossDef {
       .replace(/\{VERB\}/g, attackSys.shoutVerb)
       .replace(/\{IDX\}/g, String(safeIndex));
 
-  const voiceLine = fillTokens(`${opener} ${body}`);
+  const rawVoice = fillTokens(`${opener} ${body}`);
+  const voiceLine = rawVoice.includes(String(safeIndex))
+    ? rawVoice
+    : `${rawVoice} [Floor ${safeIndex}]`;
   const battleShout = fillTokens(`${standName}—${attackSys.name}!`);
   const defeatLine = fillTokens(defeatTpl);
 

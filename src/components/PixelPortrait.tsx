@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { getBossDef } from '../game/data';
+import { createMegaBossDef } from '../game/megaBoss';
 import {
   AnimeExpression,
   drawBossPortrait,
@@ -8,10 +9,11 @@ import {
   getBakedSkillIcon,
   getBakedWeaponIcon,
 } from '../game/pixelArtAtlas';
-import type { SkillId, WeaponId } from '../game/types';
+import type { MegaBossArchetype, SkillId, WarriorCustomization, WeaponId } from '../game/types';
 
 interface BossPortraitProps {
   bossIndex: number;
+  megaArchetype?: MegaBossArchetype;
   expression: AnimeExpression;
   size?: number;
   className?: string;
@@ -19,6 +21,7 @@ interface BossPortraitProps {
 
 export const PixelBossPortrait: React.FC<BossPortraitProps> = ({
   bossIndex,
+  megaArchetype,
   expression,
   size = 56,
   className = '',
@@ -31,9 +34,11 @@ export const PixelBossPortrait: React.FC<BossPortraitProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, 48, 48);
-    const def = getBossDef(bossIndex);
+    const def = megaArchetype
+      ? createMegaBossDef(megaArchetype, Math.max(1, bossIndex % 100), 'castle')
+      : getBossDef(bossIndex);
     drawBossPortrait(ctx, def, expression, 48);
-  }, [bossIndex, expression]);
+  }, [bossIndex, megaArchetype, expression]);
 
   return (
     <canvas
@@ -49,12 +54,14 @@ export const PixelBossPortrait: React.FC<BossPortraitProps> = ({
 
 interface WarriorPortraitProps {
   weaponId: WeaponId;
+  customization?: WarriorCustomization;
   size?: number;
   className?: string;
 }
 
 export const PixelWarriorPortrait: React.FC<WarriorPortraitProps> = ({
   weaponId,
+  customization,
   size = 44,
   className = '',
 }) => {
@@ -66,8 +73,14 @@ export const PixelWarriorPortrait: React.FC<WarriorPortraitProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, 32, 32);
-    drawWarriorPortrait(ctx, weaponId, 32);
-  }, [weaponId]);
+    drawWarriorPortrait(ctx, weaponId, 32, customization);
+  }, [
+    weaponId,
+    customization?.cloakColor,
+    customization?.armorColor,
+    customization?.visorColor,
+    customization?.plumeColor,
+  ]);
 
   return (
     <canvas

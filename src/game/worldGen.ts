@@ -58,15 +58,38 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
   const interactables: InteractableProp[] = [];
   const enemies: EnemyState[] = [];
 
-  // Main continuous floor with subtle carpeted / basalt spans
-  platforms.push({
-    id: `floor_${chunkIndex}`,
-    x: startX,
-    y: FLOOR_Y,
-    w: CHUNK_WIDTH,
-    h: 44,
-    kind: 'floor',
-  });
+  // Chunk 41 right after 40 bosses opens with a Chasm Pit beneath the Slippery Crossing Bridge!
+  if (chunkIndex === 41) {
+    platforms.push(
+      {
+        id: 'bridge_41_slip',
+        x: startX - 6,
+        y: FLOOR_Y - 2,
+        w: 196,
+        h: 10,
+        kind: 'bridge',
+        breakable: true,
+      },
+      {
+        id: `floor_${chunkIndex}`,
+        x: startX + 190,
+        y: FLOOR_Y,
+        w: CHUNK_WIDTH - 190,
+        h: 44,
+        kind: 'floor',
+      },
+    );
+  } else {
+    // Main continuous floor with subtle carpeted / basalt spans
+    platforms.push({
+      id: `floor_${chunkIndex}`,
+      x: startX,
+      y: FLOOR_Y,
+      w: CHUNK_WIDTH,
+      h: 44,
+      kind: 'floor',
+    });
+  }
 
   // Secret Dark Hidden Sanctum directly behind the 1st Checkpoint (walk backwards past x=0!)
   if (chunkIndex === -1) {
@@ -97,7 +120,6 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
       },
     );
 
-    // Dim abyssal braziers casting amber/crimson circles in the dark chamber
     candles.push(
       { id: 'vault_brazier_0', x: startX + 575, y: FLOOR_Y, kind: 'brazier', phase: 0.4 },
       { id: 'vault_brazier_1', x: startX + 335, y: FLOOR_Y, kind: 'brazier', phase: 1.7 },
@@ -115,27 +137,11 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
       puzzleType: 'illusory_tapestry',
       discovered: true,
       hintText: 'Cold wind blows from behind the First Checkpoint...',
-      discoveryText: 'Dark Abyssal Sanctum uncovered behind Checkpoint 1!',
+      discoveryText: 'Dark Abyssal Sanctum behind Checkpoint 1!',
       rewardText: 'Claim the OP Fire Sword at the far infernal altar!',
     };
 
-    // Illusory threshold banner right behind spawn/checkpoint 1 + Fire Sword Altar Chest!
     interactables.push(
-      {
-        id: 'vault_entry_marker',
-        x: startX + 590,
-        y: FLOOR_Y - 34,
-        w: 24,
-        h: 34,
-        kind: 'tapestry',
-        label: 'Abyssal Veil',
-        dialogue: [
-          'A hidden dark corridor stretches backwards behind the very first checkpoint.',
-          'Somewhere ahead in the pitch dark burns an ancient Overlord blade...',
-        ],
-        speaker: 'Dark Sanctum',
-        activated: true,
-      },
       {
         id: 'chest_fire_sword_op',
         x: startX + 118,
@@ -155,7 +161,6 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
       },
     );
 
-    // Abyssal Guardian inside the Dark Chamber
     enemies.push({
       id: 'enemy_vault_guardian',
       archetype: 'cursed_armor',
@@ -192,107 +197,129 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
     };
   }
 
-  // Varied architectural map patterns per chunk (Cathedral Gallery, Catwalk, Stepped Vault, Twin Bridges)
-  const mapPattern = chunkIndex === 0 ? 0 : chunkIndex % 4;
-  if (mapPattern === 0) {
-    const ledgeCount = chunkIndex === 0 ? 2 : 2 + Math.floor(rand() * 2);
-    for (let i = 0; i < ledgeCount; i++) {
-      const lx = startX + 115 + i * 165 + Math.floor(rand() * 26);
-      const ly = i % 2 === 0 ? FLOOR_Y - 46 : FLOOR_Y - 82;
-      const lw = 72 + Math.floor(rand() * 34);
-      platforms.push({
-        id: `ledge_${chunkIndex}_${i}`,
-        x: lx,
-        y: ly,
-        w: lw,
-        h: 12,
-        kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
-      });
-    }
-  } else if (mapPattern === 1) {
-    // Two-Tier Velvet Catwalk + High Arch Balcony
+  // Varied architectural map patterns per chunk (with bespoke Hellforge tiers in Volcano chunks 41..80!)
+  if (chunkIndex === 41) {
+    // Volcano Pit entry chamber ledges + braziers flanking the chasm landing
     platforms.push(
       {
-        id: `ledge_${chunkIndex}_0`,
-        x: startX + 108,
-        y: FLOOR_Y - 44,
-        w: 118,
-        h: 12,
-        kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
-      },
-      {
-        id: `ledge_${chunkIndex}_1`,
-        x: startX + 260,
-        y: FLOOR_Y - 86,
-        w: 96,
-        h: 12,
-        kind: 'bridge',
-      },
-      {
-        id: `ledge_${chunkIndex}_2`,
-        x: startX + 390,
-        y: FLOOR_Y - 48,
-        w: 84,
-        h: 12,
-        kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
-      },
-    );
-  } else if (mapPattern === 2) {
-    // Ascending Stepped Chandelier Vault
-    platforms.push(
-      {
-        id: `ledge_${chunkIndex}_0`,
-        x: startX + 120,
-        y: FLOOR_Y - 36,
-        w: 74,
+        id: 'ledge_41_pit_escape',
+        x: startX + 215,
+        y: FLOOR_Y - 46,
+        w: 98,
         h: 12,
         kind: 'brick',
       },
       {
-        id: `ledge_${chunkIndex}_1`,
-        x: startX + 225,
-        y: FLOOR_Y - 64,
-        w: 82,
-        h: 12,
-        kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
-      },
-      {
-        id: `ledge_${chunkIndex}_2`,
-        x: startX + 340,
-        y: FLOOR_Y - 90,
-        w: 76,
-        h: 12,
+        id: 'ledge_41_forge_catwalk',
+        x: startX + 350,
+        y: FLOOR_Y - 84,
+        w: 112,
+        h: 11,
         kind: 'bridge',
       },
     );
   } else {
-    // Twin Suspended Bridges with Upper Sentinel Perch
-    platforms.push(
-      {
-        id: `ledge_${chunkIndex}_0`,
-        x: startX + 132,
-        y: FLOOR_Y - 52,
-        w: 92,
-        h: 10,
-        kind: 'bridge',
-      },
-      {
-        id: `ledge_${chunkIndex}_1`,
-        x: startX + 305,
-        y: FLOOR_Y - 52,
-        w: 92,
-        h: 10,
-        kind: 'bridge',
-      },
-      {
-        id: `ledge_${chunkIndex}_2`,
-        x: startX + 220,
-        y: FLOOR_Y - 94,
-        w: 78,
-        h: 12,
-        kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
-      },
-    );
+    const mapPattern = chunkIndex === 0 ? 0 : chunkIndex % 4;
+    if (mapPattern === 0) {
+      const ledgeCount = chunkIndex === 0 ? 2 : 2 + Math.floor(rand() * 2);
+      for (let i = 0; i < ledgeCount; i++) {
+        const lx = startX + 115 + i * 165 + Math.floor(rand() * 26);
+        const ly = i % 2 === 0 ? FLOOR_Y - 46 : FLOOR_Y - 82;
+        const lw = 72 + Math.floor(rand() * 34);
+        platforms.push({
+          id: `ledge_${chunkIndex}_${i}`,
+          x: lx,
+          y: ly,
+          w: lw,
+          h: 12,
+          kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
+        });
+      }
+    } else if (mapPattern === 1) {
+      // Two-Tier Velvet/Obsidian Catwalk + High Arch Balcony
+      platforms.push(
+        {
+          id: `ledge_${chunkIndex}_0`,
+          x: startX + 108,
+          y: FLOOR_Y - 44,
+          w: 118,
+          h: 12,
+          kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
+        },
+        {
+          id: `ledge_${chunkIndex}_1`,
+          x: startX + 260,
+          y: FLOOR_Y - 86,
+          w: 96,
+          h: 12,
+          kind: 'bridge',
+        },
+        {
+          id: `ledge_${chunkIndex}_2`,
+          x: startX + 390,
+          y: FLOOR_Y - 48,
+          w: 84,
+          h: 12,
+          kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
+        },
+      );
+    } else if (mapPattern === 2) {
+      // Ascending Stepped Chandelier / Forge Vault
+      platforms.push(
+        {
+          id: `ledge_${chunkIndex}_0`,
+          x: startX + 120,
+          y: FLOOR_Y - 36,
+          w: 74,
+          h: 12,
+          kind: 'brick',
+        },
+        {
+          id: `ledge_${chunkIndex}_1`,
+          x: startX + 225,
+          y: FLOOR_Y - 64,
+          w: 82,
+          h: 12,
+          kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
+        },
+        {
+          id: `ledge_${chunkIndex}_2`,
+          x: startX + 340,
+          y: FLOOR_Y - 90,
+          w: 76,
+          h: 12,
+          kind: 'bridge',
+        },
+      );
+    } else {
+      // Twin Suspended Bridges with Upper Sentinel Perch
+      platforms.push(
+        {
+          id: `ledge_${chunkIndex}_0`,
+          x: startX + 132,
+          y: FLOOR_Y - 52,
+          w: 92,
+          h: 10,
+          kind: 'bridge',
+        },
+        {
+          id: `ledge_${chunkIndex}_1`,
+          x: startX + 305,
+          y: FLOOR_Y - 52,
+          w: 92,
+          h: 10,
+          kind: 'bridge',
+        },
+        {
+          id: `ledge_${chunkIndex}_2`,
+          x: startX + 220,
+          y: FLOOR_Y - 94,
+          w: 78,
+          h: 12,
+          kind: biome === 'castle' ? 'carpet_ledge' : 'brick',
+        },
+      );
+    }
   }
 
   // Candles / Sconces / Braziers
@@ -689,6 +716,6 @@ export function getBiomeCheckpointList(highestReachedIndex: number) {
 
 export function getBossMilestoneBiomeCheck(bossesDefeated: number): BiomeId {
   if (bossesDefeated < BOSSES_PER_BIOME) return 'castle';
-  if (bossesDefeated < BOSSES_PER_BIOME * 2) return 'forest';
-  return 'volcano';
+  if (bossesDefeated < BOSSES_PER_BIOME * 2) return 'volcano';
+  return 'forest';
 }

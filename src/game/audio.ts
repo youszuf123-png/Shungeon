@@ -1,9 +1,4 @@
-import {
-  buildJotaroAttackAnnouncement,
-  buildJotaroDialoguePrompt,
-  type JotaroVoicePrompt,
-} from './jotaroVoice';
-import type { BiomeId, BossDef, SkillId, WeaponId } from './types';
+import type { BiomeId, BossDef, MegaSkillAnimStyle, SkillId, WeaponId } from './types';
 
 class GameAudioEngine {
   private ctx: AudioContext | null = null;
@@ -13,12 +8,6 @@ class GameAudioEngine {
   private activeBossMusic: BossDef | null = null;
   private activeBiome: BiomeId = 'castle';
   private playingMusic = false;
-  private aiWavCache = new Map<string, string>();
-  private inFlightTts = new Map<string, Promise<{ url: string | null; error: string | null }>>();
-  private activeVoiceAudio: HTMLAudioElement | null = null;
-  private activeVoiceSeq = 0;
-  private lastTtsError: string | null = null;
-  private rateLimitedUntil = 0;
   private noiseBuffer: AudioBuffer | null = null;
 
   public isMuted(): boolean {
@@ -29,20 +18,6 @@ class GameAudioEngine {
     this.muted = m;
     if (m) {
       this.stopMusic();
-      this.stopActiveAiVoice();
-    }
-  }
-
-  private stopActiveAiVoice(): void {
-    this.activeVoiceSeq += 1;
-    if (this.activeVoiceAudio) {
-      try {
-        this.activeVoiceAudio.pause();
-        this.activeVoiceAudio.currentTime = 0;
-      } catch {
-        // ignore
-      }
-      this.activeVoiceAudio = null;
     }
   }
 
@@ -64,176 +39,6 @@ class GameAudioEngine {
       this.ctx.resume().catch(() => {});
     }
     return this.ctx;
-  }
-
-  private async fetchJotaroTtsClip(
-    cacheKey: string,
-    ttsScript: string,
-    stylePrompt: string,
-    attackName: string,
-  ): Promise<{ url: string | null; error: string | null }> {
-    const fullKey = `jotaro:${cacheKey}`;
-    const cachedUrl = this.aiWavCache.get(fullKey);
-    if (cachedUrl) {
-      return { url: cachedUrl, error: null };
-    }
-
-    const pending = this.inFlightTts.get(fullKey);
-    if (pending) return pending;
-
-    const req = (async () => {
-      if (typeof fetch === 'undefined') {
-        return { url: null, error: 'Fetch API unavailable.' };
-      }
-      try {
-        const resp = await fetch('/api/voice/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            persona: 'jotaro',
-            ttsScript,
-            stylePrompt,
-            attackName,
-          }),
-        });
-        const data = (await resp.json().catch(() => ({}))) as {
-          ok?: boolean;
-          audioBase64?: string;
-          mimeType?: string;
-          error?: string;
-        };
-        if (!resp.ok || !data.audioBase64) {
-          const msg = data.error || `Jotaro Gemini TTS failed (HTTP ${resp.status}).`;
-          this.lastTtsError = msg;
-          if (resp.status === 429) {
-            this.rateLimitedUntil = Date.now() + 18000;
-          }
-          return { url: null, error: msg };
-        }
-
-        const byteChars = atob(data.audioBase64);
-        const byteNums = new Uint8Array(byteChars.length);
-        for (let i = 0; i < byteChars.length; i++) {
-          byteNums[i] = byteChars.charCodeAt(i);
-        }
-        const blob = new Blob([byteNums], { type: data.mimeType || 'audio/wav' });
-        const url = URL.createObjectURL(blob);
-        this.aiWavCache.set(fullKey, url);
-        this.lastTtsError = null;
-        return { url, error: null };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Unable to reach Jotaro voice server.';
-        this.lastTtsError = msg;
-        return { url: null, error: msg };
-      } finally {
-        this.inFlightTts.delete(fullKey);
-      }
-    })();
-
-    this.inFlightTts.set(fullKey, req);
-    return req;
-  }
-
-  private playWavUrl(url: string): void {
-    if (this.muted || typeof Audio === 'undefined') return;
-    this.stopActiveAiVoice();
-    const audio = new Audio(url);
-    audio.volume = 0.95;
-    this.activeVoiceAudio = audio;
-    audio.play().catch(() => {});
-  }
-
-  public prefetchJotaroVoice(prompt: JotaroVoicePrompt): void {
-    if (this.muted || this.lastTtsError?.includes('GEMINI_API_KEY')) return;
-    void this.fetchJotaroTtsClip(
-      prompt.cacheKey,
-      prompt.ttsScript,
-      prompt.voiceStyle,
-      prompt.attackName,
-    );
-  }
-
-  public announceJotaroBattleVoice(
-    prompt: JotaroVoicePrompt,
-    onStatus?: (status: 'generating' | 'ready' | 'error', error: string | null) => void,
-  ): void {
-    if (this.muted) return;
-    const seq = ++this.activeVoiceSeq;
-    const fullKey = `jotaro:${prompt.cacheKey}`;
-    const immediateUrl = this.aiWavCache.get(fullKey);
-
-    // Deep Stand bass impact sting under Jotaro's battle call
-    const ctx = this.ensureCtx();
-    if (ctx) {
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(118, now);
-      osc.frequency.exponentialRampToValueAtTime(72, now + 0.22);
-      gain.gain.setValueAtTime(0.055, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.25);
-    }
-
-    if (immediateUrl) {
-      this.playWavUrl(immediateUrl);
-      onStatus?.('ready', null);
-      return;
-    }
-
-    onStatus?.('generating', null);
-    void this.fetchJotaroTtsClip(
-      prompt.cacheKey,
-      prompt.ttsScript,
-      prompt.voiceStyle,
-      prompt.attackName,
-    ).then((res) => {
-      if (this.muted) return;
-      if (res.url) {
-        if (seq === this.activeVoiceSeq) {
-          this.playWavUrl(res.url);
-        }
-        onStatus?.('ready', null);
-      } else {
-        onStatus?.('error', res.error);
-      }
-    });
-  }
-
-  /**
-   * Main game voice everywhere outside boss battles: Jotaro Kujo AI voice
-   * delivered with genuine emotion via Gemini 3.8 Flash TTS.
-   */
-  public speakJotaroDialogue(prompt: JotaroVoicePrompt): void {
-    if (this.muted) return;
-    const seq = ++this.activeVoiceSeq;
-    const fullKey = `jotaro:${prompt.cacheKey}`;
-    const immediateUrl = this.aiWavCache.get(fullKey);
-
-    if (immediateUrl) {
-      this.playWavUrl(immediateUrl);
-      return;
-    }
-
-    if (this.lastTtsError?.includes('GEMINI_API_KEY') || Date.now() < this.rateLimitedUntil) {
-      return;
-    }
-
-    void this.fetchJotaroTtsClip(
-      prompt.cacheKey,
-      prompt.ttsScript,
-      prompt.voiceStyle,
-      prompt.attackName,
-    ).then((res) => {
-      if (this.muted || seq !== this.activeVoiceSeq) return;
-      if (res.url) {
-        this.playWavUrl(res.url);
-      }
-    });
   }
 
   public unlock(): void {
@@ -291,23 +96,44 @@ class GameAudioEngine {
           ? 820
           : weaponId === 'crescent'
             ? 560 + comboStep * 35
-            : weaponId === 'runeblade'
-              ? 240
-              : 340;
-    const endHz = weaponId === 'runeblade' ? 75 : 130;
-    const dur = weaponId === 'rapier' ? 0.08 : weaponId === 'runeblade' ? 0.19 : 0.12;
+            : weaponId === 'fire_sword'
+              ? 480 + comboStep * 35
+              : weaponId === 'runeblade'
+                ? 240
+                : 340;
+    const endHz = weaponId === 'runeblade' ? 75 : weaponId === 'fire_sword' ? 92 : 130;
+    const dur =
+      weaponId === 'rapier' ? 0.08 : weaponId === 'runeblade' || weaponId === 'fire_sword' ? 0.19 : 0.12;
 
     osc.type = weaponId === 'katana' ? 'triangle' : 'sawtooth';
     osc.frequency.setValueAtTime(startHz, now);
     osc.frequency.exponentialRampToValueAtTime(endHz, now + dur);
 
-    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.setValueAtTime(weaponId === 'fire_sword' ? 0.12 : 0.09, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
     osc.stop(now + dur + 0.01);
+
+    if (weaponId === 'fire_sword') {
+      const fireNoise = ctx.createBufferSource();
+      fireNoise.buffer = this.getNoiseBuffer(ctx);
+      fireNoise.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(340, now);
+      bp.frequency.exponentialRampToValueAtTime(1250, now + 0.12);
+      const fg = ctx.createGain();
+      fg.gain.setValueAtTime(0.09, now);
+      fg.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      fireNoise.connect(bp);
+      bp.connect(fg);
+      fg.connect(ctx.destination);
+      fireNoise.start(now);
+      fireNoise.stop(now + 0.23);
+    }
   }
 
   public playSlashClaw(heavy = false): void {
@@ -437,7 +263,7 @@ class GameAudioEngine {
     thump.stop(now + 0.04);
   }
 
-  public playSkill(skillId: SkillId, withVoice = true, skillDisplayName?: string): void {
+  public playSkill(skillId: SkillId): void {
     const ctx = this.ensureCtx();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -638,16 +464,6 @@ class GameAudioEngine {
       slam.start(now + 0.08);
       slam.stop(now + 0.4);
     }
-
-    if (withVoice && skillDisplayName) {
-      this.speakJotaroDialogue(
-        buildJotaroAttackAnnouncement({
-          kind: 'player_skill',
-          skillId,
-          attackName: skillDisplayName,
-        }),
-      );
-    }
   }
 
   public playSecretFound(): void {
@@ -690,26 +506,127 @@ class GameAudioEngine {
     });
   }
 
-  /**
-   * Jotaro Kujo AI voice line for short battle / attack callouts.
-   */
-  public playAnimeVoiceline(
-    text: string,
-    _seed = 1,
-    mode: 'intro' | 'attack' | 'defeat' = 'intro',
-  ): void {
-    const kind = mode === 'attack' ? 'system' : 'warrior';
-    this.speakJotaroDialogue(buildJotaroDialoguePrompt(text, kind));
+  public playMegaGlitchCrash(): void {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // Chromatic glitch static shards
+    [0, 0.07, 0.14, 0.24, 0.36].forEach((delay, idx) => {
+      const t = now + delay;
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.getNoiseBuffer(ctx);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(650 + idx * 520, t);
+      bp.Q.setValueAtTime(2.8, t);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.14, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      noise.connect(bp);
+      bp.connect(g);
+      g.connect(ctx.destination);
+      noise.start(t);
+      noise.stop(t + 0.1);
+    });
+
+    // Colossal sub-bass time-space tear drop
+    const bass = ctx.createOscillator();
+    const bg = ctx.createGain();
+    bass.type = 'sawtooth';
+    bass.frequency.setValueAtTime(260, now);
+    bass.frequency.exponentialRampToValueAtTime(36, now + 0.78);
+    bg.gain.setValueAtTime(0.16, now);
+    bg.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    bass.connect(bg);
+    bg.connect(ctx.destination);
+    bass.start(now);
+    bass.stop(now + 0.82);
+
+    // Ominous high dimensional reveal chime
+    [880, 1174.66, 1661.22].forEach((hz, idx) => {
+      const t = now + 0.42 + idx * 0.06;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(hz, t);
+      g.gain.setValueAtTime(0.075, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.36);
+    });
   }
 
-  public playBossVoiceCue(boss: BossDef, mode: 'intro' | 'attack' | 'defeat' = 'intro'): void {
-    const prompt = buildJotaroAttackAnnouncement({
-      kind: mode === 'defeat' ? 'boss_defeat' : mode === 'attack' ? 'boss_attack' : 'boss_intro',
-      attackName: boss.attackName,
-      bossName: boss.name,
-      standName: boss.standName,
-    });
-    this.speakJotaroDialogue(prompt);
+  public playMegaSkillSfx(animStyle: MegaSkillAnimStyle): void {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    if (animStyle === 'mega_prism_knives' || animStyle === 'mega_sword_vortex') {
+      [0, 0.05, 0.1, 0.16, 0.22].forEach((delay, idx) => {
+        const t = now + delay;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1180 + idx * 180, t);
+        osc.frequency.exponentialRampToValueAtTime(420, t + 0.12);
+        g.gain.setValueAtTime(0.085, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.14);
+      });
+    } else if (animStyle === 'mega_clock_shatter') {
+      [1567.98, 1046.5, 523.25].forEach((hz, idx) => {
+        const t = now + idx * 0.08;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(hz, t);
+        osc.frequency.exponentialRampToValueAtTime(hz * 0.45, t + 0.25);
+        g.gain.setValueAtTime(0.11, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.27);
+      });
+    } else if (animStyle === 'mega_soulfire_pillars') {
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.getNoiseBuffer(ctx);
+      noise.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(280, now);
+      bp.frequency.exponentialRampToValueAtTime(1650, now + 0.22);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.14, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+      noise.connect(bp);
+      bp.connect(g);
+      g.connect(ctx.destination);
+      noise.start(now);
+      noise.stop(now + 0.45);
+    } else {
+      // Heavy twin sword / guillotine / rainbow barrage / cross execution sweep
+      [0, 0.08, 0.16].forEach((delay, idx) => {
+        const t = now + delay;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(760 - idx * 120, t);
+        osc.frequency.exponentialRampToValueAtTime(78, t + 0.18);
+        g.gain.setValueAtTime(0.11, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.19);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.2);
+      });
+    }
   }
 
   public startMusic(biome: BiomeId, boss: BossDef | null): void {

@@ -2,14 +2,20 @@ import React, { useState } from 'react';
 
 interface TitleScreenProps {
   onlineCount: number;
+  savedCount: number;
   onStart: (playerName: string) => void;
+  onOpenSaves: () => void;
+  onOpenWorlds: () => void;
   onToggleRotate: () => void;
   rotatedMobile: boolean;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   onlineCount,
+  savedCount,
   onStart,
+  onOpenSaves,
+  onOpenWorlds,
   onToggleRotate,
   rotatedMobile,
 }) => {
@@ -102,6 +108,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             className="px-7 py-2.5 text-sm font-semibold tracking-wider text-amber-50 bg-[#991b1b] border-2 border-amber-400 hover:bg-[#b91c1c] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             Enter Castle
+          </button>
+          <button
+            type="button"
+            data-testid="title-saves-btn"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenSaves();
+            }}
+            className="px-4 py-2.5 text-xs font-pixel-mono font-bold text-emerald-100 bg-[#142a21] border border-emerald-400/75 hover:border-emerald-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            Load Game{savedCount > 0 ? ` (${savedCount})` : ''}
+          </button>
+          <button
+            type="button"
+            data-testid="title-worlds-btn"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenWorlds();
+            }}
+            className="px-4 py-2.5 text-xs font-pixel-mono font-bold text-cyan-100 bg-[#112238] border border-cyan-400/75 hover:border-cyan-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            Online Worlds
           </button>
         </div>
       </div>
