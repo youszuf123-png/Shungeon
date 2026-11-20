@@ -1,0 +1,58 @@
+- main [ref=e3]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic: HP 115/115
+            - generic: 260G
+          - generic:
+            - generic: Solaris Isekai Town
+            - generic [aria-hidden]: ·
+            - generic: F-Rank
+            - generic [aria-hidden]: ·
+            - generic: Isekai Gate Open
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - generic [ref=e27]: LV.1
+            - generic [ref=e28]: PTS:0
+            - button "SKL:0" [disabled] [ref=e29]
+            - button "ATK:0" [disabled] [ref=e30]
+            - button "HP:0" [disabled] [ref=e31]
+            - button "SPD:0" [disabled] [ref=e32]
+          - button "STATUS [K]" [ref=e33] [cursor=pointer]
+        - generic [ref=e34]:
+          - button "ENTER GUILD" [ref=e35] [cursor=pointer]
+          - button "WARDROBE SHOP" [ref=e36] [cursor=pointer]
+          - button "CITADEL" [ref=e37] [cursor=pointer]
+      - generic [ref=e38]:
+        - generic [ref=e39]: World WRLD-H2XM · 1 Online
+        - button "Open Save and Load Menu" [ref=e40] [cursor=pointer]: SAVE
+        - button "Open Online Bastera Worlds" [ref=e41] [cursor=pointer]: WORLDS (1)
+        - button "Open Main Sanctuary Interface" [ref=e42] [cursor=pointer]: SANCTUARY [C]
+        - button "Open Inventory" [ref=e43] [cursor=pointer]
+        - button "Checkpoints and Boss Codex" [ref=e47] [cursor=pointer]
+        - button "Rotate Screen Perspective" [ref=e51] [cursor=pointer]
+        - button "Mute Audio" [ref=e55] [cursor=pointer]
+        - button "Pause Game" [ref=e59] [cursor=pointer]
+    - generic: "[F] Talk to Merchant Lena"
+    - generic:
+      - generic: 10m · CP 2
+      - generic [ref=e64]:
+        - button "fire_sword weapon icon [J] 2x Infernal Overlord Style · 2x Fire Sword" [ref=e65] [cursor=pointer]:
+          - generic "fire_sword weapon icon" [ref=e66]
+          - generic [ref=e67]:
+            - generic [ref=e68]: "[J] 2x Infernal Overlord Style · 2x"
+            - generic [ref=e69]: Fire Sword
+        - button "[SHFT] DASH" [ref=e70] [cursor=pointer]:
+          - generic [ref=e71]: "[SHFT]"
+          - generic [ref=e72]: DASH
+        - button "[1] DASH 18ST" [ref=e73] [cursor=pointer]:
+          - generic [ref=e74]: "[1] DASH"
+          - generic [ref=e75]: 18ST
+        - button "[2] WAVE 22ST" [ref=e76] [cursor=pointer]:
+          - generic [ref=e77]: "[2] WAVE"
+          - generic [ref=e78]: 22ST
+        - button "[3] ORA ORA 24ST" [ref=e79] [cursor=pointer]:
+          - generic [ref=e80]: "[3] ORA ORA"
+          - generic [ref=e81]: 24ST

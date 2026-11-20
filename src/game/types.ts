@@ -24,7 +24,14 @@ export type EnemyArchetype =
   | 'cultist_mage'
   | 'gargoyle_charger'
   | 'cursed_armor'
-  | 'phantom_wisp';
+  | 'phantom_wisp'
+  | 'goblin_normal'
+  | 'hobgoblin'
+  | 'bandit_fighter'
+  | 'bandit_archer'
+  | 'demon_succubus'
+  | 'demon_tank'
+  | 'demon_lightning';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -58,10 +65,12 @@ export interface SkillDef {
   color: string;
 }
 
+export type OrbId = 'orb_flame' | 'orb_wind' | 'orb_electric';
+
 export interface InventoryItem {
   id: string;
   name: string;
-  category: 'potion' | 'relic' | 'resource' | 'key';
+  category: 'potion' | 'relic' | 'resource' | 'key' | 'orb';
   description: string;
   sarcasticQuote: string;
   count: number;
@@ -103,11 +112,43 @@ export interface PlayerStats {
   speed: number;
 }
 
+export type RealmMode =
+  | 'citadel'
+  | 'isekai_town'
+  | 'isekai_guild'
+  | 'isekai_wardrobe'
+  | 'goblin_dungeon'
+  | 'carriage_escort'
+  | 'demon_realm'
+  | 'demon_king_arena';
+
+export type GuildRank = 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
+
+export type GuildMissionId =
+  | 'f_goblin_warren'
+  | 'e_hobgoblin_caves'
+  | 'd_deep_goblin_keep'
+  | 'c_princess_carriage'
+  | 'b_demon_invasion'
+  | 'a_three_demon_kings';
+
+export type OutfitStyle =
+  | 'knight_plate'
+  | 'adventurer_tunic'
+  | 'guild_coat'
+  | 'demon_slayer'
+  | 'royal_regalia';
+
+export type HeadgearStyle = 'helm' | 'beret' | 'bandana' | 'circlet';
+
 export interface WarriorCustomization {
   cloakColor: string;
   armorColor: string;
   visorColor: string;
   plumeColor: string;
+  outfitStyle?: OutfitStyle;
+  headgearStyle?: HeadgearStyle;
+  crownEquipped?: boolean;
 }
 
 export type MegaBossArchetype = 'mega_dio' | 'mega_undead_knight';
@@ -120,7 +161,8 @@ export type MegaSkillAnimStyle =
   | 'mega_guillotine'
   | 'mega_sword_vortex'
   | 'mega_soulfire_pillars'
-  | 'mega_cross_execution';
+  | 'mega_cross_execution'
+  | 'gyro_green_ball';
 
 export interface MegaBossSkillDef {
   id: string;
@@ -143,11 +185,15 @@ export interface BossDef {
   climateSkyBottom: string;
   climateParticleColor: string;
   maxHp: number;
+  difficultyMultiplier?: number;
   primaryColor: string;
   secondaryColor: string;
   auraColor: string;
   skinColor: string;
   isMegaBoss?: boolean;
+  isGyroBoss?: boolean;
+  gyroAttackDamage?: number;
+  emotes?: string[];
   megaArchetype?: MegaBossArchetype;
   megaSkills?: MegaBossSkillDef[];
   hatStyle:
@@ -158,7 +204,8 @@ export interface BossDef {
     | 'hood'
     | 'horns'
     | 'halo_spikes'
-    | 'samurai_crest';
+    | 'samurai_crest'
+    | 'gyro_hat';
   coatStyle: 'cape' | 'trench' | 'armor' | 'vest' | 'robes' | 'spiked_mantle';
   standShape: 'brawler' | 'reaper' | 'knight' | 'clockwork' | 'serpent' | 'sovereign';
   emblem: 'star' | 'clock' | 'skull' | 'diamond' | 'eye' | 'flame';
@@ -174,7 +221,8 @@ export interface BossDef {
     | 'blood_scythe'
     | 'lightning_overdrive'
     | 'magma_eruption'
-    | 'chrono_shear';
+    | 'chrono_shear'
+    | 'gyro_spin';
   attackName: string;
   music: BossMusicConfig;
 }
@@ -203,7 +251,24 @@ export interface InteractableProp {
   y: number;
   w: number;
   h: number;
-  kind: 'throne' | 'broken_brick' | 'lever' | 'pressure_plate' | 'chest' | 'checkpoint' | 'tapestry' | 'escape_gate';
+  kind:
+    | 'throne'
+    | 'broken_brick'
+    | 'lever'
+    | 'pressure_plate'
+    | 'chest'
+    | 'checkpoint'
+    | 'tapestry'
+    | 'escape_gate'
+    | 'isekai_portal'
+    | 'guild_door'
+    | 'wardrobe_door'
+    | 'town_exit_door'
+    | 'guild_reception'
+    | 'guild_bar'
+    | 'wardrobe_counter'
+    | 'bulletin_board'
+    | 'mission_gate';
   label: string;
   dialogue: string[];
   speaker: string;
@@ -249,6 +314,7 @@ export interface EnemyState {
   biome: BiomeId;
   rewardGold: number;
   koTimer: number;
+  attackDamage?: number;
 }
 
 export interface ActiveBoss {
@@ -282,12 +348,24 @@ export interface Projectile {
   fromPlayer: boolean;
   color: string;
   life: number;
-  kind: 'knife' | 'rune' | 'fireball' | 'slash_wave' | 'gravity_orb';
+  kind:
+    | 'knife'
+    | 'rune'
+    | 'fireball'
+    | 'slash_wave'
+    | 'gravity_orb'
+    | 'gyro_ball'
+    | 'arrow'
+    | 'succubus_orb'
+    | 'purple_flame'
+    | 'purple_meteor';
+  spinPhase?: number;
+  targetsCarriage?: boolean;
 }
 
 export interface DialogueState {
   speaker: string;
-  portraitKind: 'warrior' | 'throne' | 'candle' | 'secret' | 'boss' | 'system';
+  portraitKind: 'warrior' | 'throne' | 'candle' | 'secret' | 'boss' | 'system' | 'npc' | 'princess';
   portraitColor: string;
   lines: string[];
   lineIndex: number;
@@ -352,6 +430,45 @@ export interface OnlineWorldSummary {
   isPublic: boolean;
 }
 
+export interface OnlineAdventurer {
+  id: string;
+  name: string;
+  realm: RealmMode;
+  guildRank: GuildRank;
+  worldId: string;
+}
+
+export interface GuildInvite {
+  inviteId: string;
+  fromPeerId: string;
+  fromName: string;
+  fromRank: GuildRank;
+  missionId: GuildMissionId;
+  missionTitle: string;
+  worldId: string;
+}
+
+export interface GuildBulletinRankingEntry {
+  name: string;
+  rank: GuildRank;
+  score: number;
+  title: string;
+}
+
+export interface GuildBulletinMissionEntry {
+  missionId: GuildMissionId;
+  title: string;
+  rankReq: GuildRank;
+  activeParties: number;
+  completions: number;
+}
+
+export interface GuildBulletinSnapshot {
+  rankings: GuildBulletinRankingEntry[];
+  popularMissions: GuildBulletinMissionEntry[];
+  tickerText: string;
+}
+
 export interface BasteraSaveSummary {
   saveId: string;
   playerName: string;
@@ -362,6 +479,8 @@ export interface BasteraSaveSummary {
   distanceMeters: number;
   gold: number;
   equippedWeapon: WeaponId;
+  guildRank?: GuildRank;
+  realm?: RealmMode;
 }
 
 export interface MultiplayerPeer {
@@ -375,6 +494,8 @@ export interface MultiplayerPeer {
   anim: 'idle' | 'run' | 'jump' | 'attack' | 'skill';
   weaponId: string;
   biome: string;
+  realm?: RealmMode;
+  guildRank?: GuildRank;
   bossesDefeated: number;
   color: string;
   customization?: WarriorCustomization;
@@ -407,6 +528,9 @@ export interface BossBattleSlashFx {
     | 'void_crush'
     | 'lightning'
     | 'ora_barrage'
+    | 'orb_flame'
+    | 'orb_wind'
+    | 'orb_electric'
     | MegaSkillAnimStyle;
   color: string;
   accentColor: string;
@@ -432,23 +556,134 @@ export interface BossBattleSnapshot {
   lastBossDamage: number | null;
   guardActive: boolean;
   bossFrozenTurns: number;
+  bossStunReason?: 'freeze' | 'electric' | null;
+  windVulnerable?: boolean;
   primaryColor: string;
   secondaryColor: string;
   auraColor: string;
   isMegaBoss?: boolean;
+  isGyroBoss?: boolean;
+  gyroEmote?: string | null;
   megaArchetype?: MegaBossArchetype;
   activeSkillName?: string | null;
   activeSkillPalette?: [string, string, string] | null;
 }
 
 export interface MegaCutsceneHud {
-  archetype: MegaBossArchetype;
+  archetype: MegaBossArchetype | 'gyro_zeppeli';
   name: string;
   title: string;
   standName: string;
   subtitle: string;
   phase: 'glitch' | 'reveal';
   progress: number;
+}
+
+export interface IsekaiNpc {
+  id: string;
+  name: string;
+  role: 'townfolk' | 'merchant' | 'guard' | 'adventurer' | 'drinker' | 'receptionist' | 'tailor';
+  x: number;
+  y: number;
+  minX: number;
+  maxX: number;
+  speed: number;
+  facing: 1 | -1;
+  walkCycle: number;
+  coatColor: string;
+  hairColor: string;
+  shirtColor: string;
+  sitting?: boolean;
+  drinkingPhase?: number;
+  dialogue: string[];
+  crownedDialogue?: string[];
+}
+
+export interface DemonKingEntity {
+  id: string;
+  index: 1 | 2 | 3;
+  name: string;
+  title: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  w: number;
+  h: number;
+  hp: number;
+  maxHp: number;
+  facing: 1 | -1;
+  hitFlash: number;
+  purpleFlameTimer: number;
+  castIndex: number;
+  activeSkillBanner: string | null;
+  activeSkillTimer: number;
+  primaryColor: string;
+  hornColor: string;
+  auraColor: string;
+  defeated: boolean;
+  stunTimer?: number;
+  windVulnerable?: boolean;
+}
+
+export type PurpleFlameKind =
+  | 'violet_pillars'
+  | 'purple_meteors'
+  | 'abyssal_nova'
+  | 'shadow_crescent';
+
+export interface PurpleFlameZone {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  life: number;
+  maxLife: number;
+  damage: number;
+  kind: PurpleFlameKind;
+  hasHit: boolean;
+}
+
+export interface CarriageEscortState {
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  progress: number; // 0 .. 100
+  speed: number;
+  wheelPhase: number;
+  hitFlash: number;
+  wavesSpawned: number;
+}
+
+export interface IsekaiMissionHud {
+  missionId: GuildMissionId;
+  title: string;
+  rank: GuildRank;
+  objectiveText: string;
+  killsDone: number;
+  killsRequired: number;
+  carriageHp?: number;
+  carriageMaxHp?: number;
+  carriageProgress?: number;
+  demonKings?: {
+    id: string;
+    name: string;
+    hp: number;
+    maxHp: number;
+    defeated: boolean;
+    windVulnerable?: boolean;
+    stunned?: boolean;
+  }[];
+  activeCastBanner?: string | null;
+  completed: boolean;
+}
+
+export interface CoronationCutsceneHud {
+  phase: 'approach' | 'crowning' | 'cheering';
+  progress: number;
+  subtitle: string;
 }
 
 export interface HudSnapshot {
@@ -478,6 +713,18 @@ export interface HudSnapshot {
   starPlatinumActive: boolean;
   bossCooldownSeconds: number;
   bossFoughtStreak: number;
+  idleSecondsToIsekai: number;
+  realm: RealmMode;
+  guildRank: GuildRank;
+  unlockedWardrobe: string[];
+  crownUnlocked: boolean;
+  gyroDefeated: boolean;
+  isekaiPortalOpen: boolean;
+  isekaiMission: IsekaiMissionHud | null;
+  coronationCutscene: CoronationCutsceneHud | null;
+  onlineAdventurers: OnlineAdventurer[];
+  pendingGuildInvites: GuildInvite[];
+  guildBulletin: GuildBulletinSnapshot;
   inventory: InventoryItem[];
   dialogue: DialogueState | null;
   activeBoss: {

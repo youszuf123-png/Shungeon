@@ -188,6 +188,11 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-sm text-amber-100">{item.name}</span>
                       <span className="font-pixel-mono text-xs text-amber-400">x{item.count}</span>
+                      {item.category === 'orb' && (
+                        <span className="px-1.5 py-0.5 text-[9px] font-pixel-mono font-bold bg-[#28141e] border border-amber-400/50 text-amber-300">
+                          BOSS ORB
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-amber-100/80 mt-0.5">{item.description}</p>
                     <p className="font-pixel-mono text-[11px] text-amber-300/70 italic mt-1">

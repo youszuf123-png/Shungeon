@@ -4,8 +4,46 @@ import {
   TOTAL_BOSSES,
   TOTAL_HIDDEN_PASSAGES,
   WEAPONS,
+  createGyroZeppeliBossDef,
   getBiomeDisplayName,
 } from './data';
+import {
+  GUILD_MISSIONS,
+  ISEKAI_IDLE_TRANSPORT_SECONDS,
+  ISEKAI_ROOM_BOUNDS,
+  buildIsekaiRoomInteractables,
+  buildIsekaiRoomPlatforms,
+  buyOrEquipWardrobeItem,
+  canStartGuildMission,
+  createBanditWave,
+  createCarriageEscortInit,
+  createDefaultGuildBulletin,
+  createDemonKingPurpleFlameCast,
+  createDemonRealmWave,
+  createGoblinDungeonWave,
+  createGuildNpcs,
+  createThreeDemonKingsInit,
+  createTownNpcs,
+  createWardrobeNpcs,
+  promoteGuildRankAfterMission,
+  resetPlayerForIsekai,
+  shouldIdleTriggerIsekai,
+  stepIsekaiNpcs,
+} from './isekai';
+import {
+  drawCarriageEscortBackdrop,
+  drawCoronationCutscene,
+  drawDemonKings,
+  drawDemonRealmBackdrop,
+  drawGoblinDungeonBackdrop,
+  drawIsekaiFloors,
+  drawIsekaiGuildInterior,
+  drawIsekaiNpcs,
+  drawIsekaiTownBackdrop,
+  drawIsekaiWardrobeInterior,
+  drawPurpleFlameZones,
+  drawRoyalCarriage,
+} from './isekaiSprites';
 import {
   createMegaBossInstance,
   pickMegaBossArchetype,
@@ -32,6 +70,7 @@ import {
 import {
   BossBattleState,
   createBossBattleState,
+  resolveBattleOrb,
   resolveBattlePotion,
   resolvePlayerBattleSkill,
   resolvePlayerBattleSword,
@@ -41,6 +80,8 @@ import {
   triggerBossCounterTurn,
 } from './battle';
 import {
+  FLAME_ORB_HP_RATIO,
+  WIND_ORB_DAMAGE_BONUS,
   addInventoryResource,
   allocateStatPoint,
   applyDamageToBoss,
@@ -57,6 +98,7 @@ import {
   grantKillStatPoints,
   recordBossFightProgress,
   rectsOverlap,
+  rollMonsterOrbDrop,
   startWeaponAttack,
   stepPlayerPhysics,
   triggerPlayerDash,
@@ -74,20 +116,34 @@ import {
 import type {
   ActiveBoss,
   BiomeId,
+  CarriageEscortState,
+  CoronationCutsceneHud,
+  DemonKingEntity,
   DialogueState,
+  EnemyArchetype,
   EnemyState,
   GameStatus,
+  GuildBulletinSnapshot,
+  GuildInvite,
+  GuildMissionId,
+  GuildRank,
   HudSnapshot,
   InteractableProp,
   InventoryItem,
+  IsekaiMissionHud,
+  IsekaiNpc,
   MegaBossArchetype,
   MegaCutsceneHud,
   MegaSkillAnimStyle,
   MultiplayerPeer,
+  OnlineAdventurer,
+  OrbId,
   OnlineWorldSummary,
   Platform,
   PlayerState,
   Projectile,
+  PurpleFlameZone,
+  RealmMode,
   SkillId,
   StatKey,
   WarriorCustomization,
@@ -228,15 +284,49 @@ export class BasteraGameEngine {
   private pendingSanctuaryCallback: (() => void) | null = null;
   private postBossInputLockTimer = 0;
 
-  // Mega Boss glitch intrusion cutscene + Chunk 41 bridge volcano pit fall
+  // Mega Boss / Gyro Zeppeli Cutscene + Chunk 41 bridge volcano pit fall
   private megaCutscene: {
-    archetype: MegaBossArchetype;
+    archetype: MegaBossArchetype | 'gyro_zeppeli';
     pendingBoss: ActiveBoss;
     timer: number;
     duration: number;
   } | null = null;
   private volcanoBridgeFallTriggered = false;
   private volcanoBridgeFallTimer = 0;
+
+  // Isekai Fantasy World, Guild, Wardrobe & Demon King Climax State
+  private realm: RealmMode = 'citadel';
+  private guildRank: GuildRank = 'F';
+  private unlockedWardrobe: string[] = ['outfit_knight_plate', 'hat_helm'];
+  private foughtIsekaiEnemies: EnemyArchetype[] = [];
+  private crownUnlocked = false;
+  private gyroDefeated = false;
+  private isekaiCompleted = false;
+  private isekaiPortalOpen = false;
+  private activeMissionId: GuildMissionId | null = null;
+  private isekaiNpcs: IsekaiNpc[] = [];
+  private isekaiPlatforms: Platform[] = [];
+  private isekaiInteractables: InteractableProp[] = [];
+  private isekaiEnemies: EnemyState[] = [];
+  private isekaiKillsDone = 0;
+  private isekaiKillsRequired = 0;
+  private isekaiWaveIndex = 0;
+  private carriageEscort: CarriageEscortState | null = null;
+  private demonKings: DemonKingEntity[] = [];
+  private purpleFlameZones: PurpleFlameZone[] = [];
+  private activeCastBanner: string | null = null;
+  private activeCastBannerTimer = 0;
+  private coronationCutscene: {
+    timer: number;
+    duration: number;
+  } | null = null;
+  private onlineAdventurers: OnlineAdventurer[] = [];
+  private pendingGuildInvites: GuildInvite[] = [];
+  private guildBulletin: GuildBulletinSnapshot = createDefaultGuildBulletin();
+  private uiCallbacks: {
+    onOpenGuild?: () => void;
+    onOpenWardrobe?: () => void;
+  } = {};
 
   // Multiplayer Co-op World Rooms & Saving
   private worldId = 'LOCAL';
@@ -285,6 +375,10 @@ export class BasteraGameEngine {
     if (paused) this.clearAllInputs(false);
   }
 
+  public setUiCallbacks(cbs: { onOpenGuild?: () => void; onOpenWardrobe?: () => void }): void {
+    this.uiCallbacks = cbs;
+  }
+
   private clearAllInputs(stopHorizontal = true): void {
     this.heldKeys.clear();
     this.justPressed.clear();
@@ -327,8 +421,7 @@ export class BasteraGameEngine {
 
   public setStatus(next: GameStatus): void {
     this.status = next;
-    const bodyState =
-      next === 'victory' ? 'gameover' : next;
+    const bodyState = next === 'victory' ? 'gameover' : next;
     document.body.dataset.state = bodyState;
     if (next === 'paused' || next === 'gameover' || next === 'victory' || next === 'title') {
       gameAudio.stopMusic();
@@ -336,7 +429,7 @@ export class BasteraGameEngine {
     } else if (next === 'playing') {
       gameAudio.unlock();
       this.clearAllInputs(true);
-      const activeBoss = this.getActiveNearbyBoss();
+      const activeBoss = this.realm === 'citadel' ? this.getActiveNearbyBoss() : null;
       gameAudio.startMusic(this.getCurrentBiome(), activeBoss?.def ?? null);
     }
     this.emitHud(true);
@@ -366,6 +459,31 @@ export class BasteraGameEngine {
     this.starPlatinumTickTimer = 0;
     this.bossesFoughtStreak = 0;
     this.bossCooldownSeconds = 0;
+
+    // Reset Isekai progression
+    this.realm = 'citadel';
+    this.guildRank = 'F';
+    this.unlockedWardrobe = ['outfit_knight_plate', 'hat_helm'];
+    this.foughtIsekaiEnemies = [];
+    this.crownUnlocked = false;
+    this.gyroDefeated = false;
+    this.isekaiCompleted = false;
+    this.isekaiPortalOpen = false;
+    this.activeMissionId = null;
+    this.isekaiNpcs = [];
+    this.isekaiPlatforms = [];
+    this.isekaiInteractables = [];
+    this.isekaiEnemies = [];
+    this.isekaiKillsDone = 0;
+    this.isekaiKillsRequired = 0;
+    this.isekaiWaveIndex = 0;
+    this.carriageEscort = null;
+    this.demonKings = [];
+    this.purpleFlameZones = [];
+    this.activeCastBanner = null;
+    this.activeCastBannerTimer = 0;
+    this.coronationCutscene = null;
+
     this.chunksDirty = true;
     this.ensureChunksAround(0);
     this.camX = 0;
@@ -377,7 +495,7 @@ export class BasteraGameEngine {
       'warrior',
       '#fbbf24',
       [
-        'Well, the royal dungeon locked the front door again. Time to fight 120 dramatic villains on an empty stomach.',
+        'Well, the royal dungeon locked the front door again. Time to climb toward Boss #100 & Gyro Zeppeli!',
         'Inspect thrones [F], smash cracked bricks [J], press [Shift] to Dash, and unleash Star Platinum ORA ORA [3]!',
       ],
     );
@@ -397,6 +515,13 @@ export class BasteraGameEngine {
       darkSanctumDiscovered: this.darkSanctumDiscovered,
       bossFoughtStreak: this.bossesFoughtStreak,
       bossCooldownSeconds: Math.ceil(this.bossCooldownSeconds),
+      realm: this.realm,
+      guildRank: this.guildRank,
+      unlockedWardrobe: this.unlockedWardrobe,
+      foughtIsekaiEnemies: this.foughtIsekaiEnemies,
+      crownUnlocked: this.crownUnlocked,
+      gyroDefeated: this.gyroDefeated,
+      isekaiCompleted: this.isekaiCompleted,
     });
   }
 
@@ -437,6 +562,15 @@ export class BasteraGameEngine {
     this.darkSanctumDiscovered = clean.darkSanctumDiscovered;
     this.bossesFoughtStreak = clean.bossFoughtStreak ?? 0;
     this.bossCooldownSeconds = clean.bossCooldownSeconds ?? 0;
+    this.realm = clean.realm ?? 'citadel';
+    this.guildRank = clean.guildRank ?? 'F';
+    this.unlockedWardrobe = clean.unlockedWardrobe ? [...clean.unlockedWardrobe] : ['outfit_knight_plate', 'hat_helm'];
+    this.foughtIsekaiEnemies = clean.foughtIsekaiEnemies ? [...clean.foughtIsekaiEnemies] : [];
+    this.crownUnlocked = Boolean(clean.crownUnlocked);
+    this.gyroDefeated = Boolean(clean.gyroDefeated);
+    this.isekaiCompleted = Boolean(clean.isekaiCompleted);
+    this.isekaiPortalOpen = this.gyroDefeated || this.realm !== 'citadel';
+    this.guildBulletin = createDefaultGuildBulletin(this.playerName, this.guildRank);
     this.starPlatinumTimer = 0;
     this.starPlatinumTickTimer = 0;
     this.lastSavedAt = clean.savedAt;
@@ -446,11 +580,24 @@ export class BasteraGameEngine {
     this.projectiles = [];
     this.bossBattle = null;
     this.megaCutscene = null;
+    this.coronationCutscene = null;
     this.volcanoBridgeFallTimer = 0;
     this.postBossInputLockTimer = 0.25;
     this.bossEncounterCooldown = 1.5;
-    this.ensureChunksAround(this.player.x);
-    this.camX = Math.max(-640, this.player.x - PIXEL_W * 0.34);
+
+    if (this.realm !== 'citadel') {
+      const targetHub: RealmMode =
+        this.realm === 'isekai_guild' || this.realm === 'isekai_wardrobe' ? this.realm : 'isekai_town';
+      this.enterIsekaiRoom(targetHub, targetHub === 'isekai_town' ? clean.player.x : 96);
+    } else {
+      this.isekaiEnemies = [];
+      this.carriageEscort = null;
+      this.demonKings = [];
+      this.purpleFlameZones = [];
+      this.activeMissionId = null;
+      this.ensureChunksAround(this.player.x);
+      this.camX = Math.max(-640, this.player.x - PIXEL_W * 0.34);
+    }
 
     if (this.worldRole === 'guest') {
       this.leaveJoinedWorld();
@@ -514,16 +661,23 @@ export class BasteraGameEngine {
   public restartFromCheckpoint(): void {
     this.bossBattle = null;
     this.megaCutscene = null;
+    this.coronationCutscene = null;
     this.bossEncounterCooldown = 1.5;
     this.postBossInputLockTimer = 0.35;
     this.clearAllInputs(true);
     this.player.hp = this.player.maxHp;
     this.player.stamina = this.player.maxStamina;
-    this.player.x = this.player.highestCheckpointX;
-    this.player.y = FLOOR_Y - this.player.h - 4;
     this.player.vx = 0;
     this.player.vy = 0;
     this.projectiles = [];
+    if (this.realm !== 'citadel') {
+      this.enterIsekaiRoom('isekai_guild', 120);
+      this.setStatus('playing');
+      this.showAnnouncement('Returned safely to Solaris Adventure Guild!');
+      return;
+    }
+    this.player.x = this.player.highestCheckpointX;
+    this.player.y = FLOOR_Y - this.player.h - 4;
     this.ensureChunksAround(this.player.x);
     this.setStatus('playing');
   }
@@ -532,6 +686,13 @@ export class BasteraGameEngine {
     const cps = getBiomeCheckpointList(this.player.highestCheckpointIndex);
     const target = cps[cpIndex];
     if (!target || !target.reached) return;
+    this.realm = 'citadel';
+    this.activeMissionId = null;
+    this.isekaiEnemies = [];
+    this.carriageEscort = null;
+    this.demonKings = [];
+    this.purpleFlameZones = [];
+    this.coronationCutscene = null;
     this.bossBattle = null;
     this.megaCutscene = null;
     this.bossEncounterCooldown = 1.5;
@@ -547,6 +708,196 @@ export class BasteraGameEngine {
     this.camX = Math.max(-640, this.player.x - PIXEL_W * 0.32);
     this.setStatus('playing');
     this.emitHud();
+  }
+
+  public buyOrEquipWardrobeItemById(itemId: string): { ok: boolean; message: string } {
+    const res = buyOrEquipWardrobeItem(this.player, this.unlockedWardrobe, itemId, this.crownUnlocked);
+    if (res.ok) {
+      gameAudio.playSecretFound();
+    }
+    this.showAnnouncement(res.message);
+    this.emitHud(true);
+    return res;
+  }
+
+  public sendGuildInvite(targetPeerId: string, missionId: GuildMissionId): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.showAnnouncement('Adventurer Guild online relay is offline — start Solo Mission instead!');
+      return;
+    }
+    this.ws.send(JSON.stringify({ type: 'guild:invite', targetPeerId, missionId }));
+    const adv = this.onlineAdventurers.find((a) => a.id === targetPeerId);
+    this.showAnnouncement(`Sent co-op Guild Quest invite to ${adv?.name ?? 'Adventurer'}!`);
+  }
+
+  public respondToGuildInvite(inviteId: string, accept: boolean): void {
+    const inv = this.pendingGuildInvites.find((i) => i.inviteId === inviteId);
+    this.pendingGuildInvites = this.pendingGuildInvites.filter((i) => i.inviteId !== inviteId);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && inv) {
+      this.ws.send(JSON.stringify({ type: 'guild:invite_response', inviteId, accept }));
+    }
+    if (accept && inv) {
+      this.startGuildMission(inv.missionId, false);
+    }
+    this.emitHud(true);
+  }
+
+  public enterIsekaiTown(reason: 'gyro' | 'idle' = 'gyro'): void {
+    this.bossBattle = null;
+    this.megaCutscene = null;
+    this.coronationCutscene = null;
+    this.projectiles = [];
+    this.dialogue = null;
+    resetPlayerForIsekai(this.player, this.inventory);
+    this.guildRank = 'F';
+    this.isekaiPortalOpen = true;
+    this.enterIsekaiRoom('isekai_town', 110);
+    gameAudio.playSecretFound();
+    this.showSecretCaption(
+      'TRANSFERRED TO SOLARIS ISEKAI REALM',
+      reason === 'idle'
+        ? 'You stood still for 2 minutes — a Dimensional Gate whisked you into Axel-Solaris Town! All stats reset; F-Rank Badge issued.'
+        : 'After besting Gyro Zeppeli, the Dimensional Gate carried you to Axel-Solaris Town! All stats reset; F-Rank Badge issued.',
+    );
+    this.openDialogue('Guild Herald Aria', 'npc', '#38bdf8', [
+      'Welcome, Reincarnated Knight, to sunny Solaris Town! Here is your porcelain F-Rank Adventurer Badge.',
+      'All your Citadel stats have reset, though your weapons & 3 combat skills remain. Visit the Wardrobe Shop or Adventure Guild ahead!',
+    ]);
+    void this.saveCurrentGame('autosave', true);
+    this.emitHud(true);
+  }
+
+  public enterIsekaiRoom(room: RealmMode, spawnX = 96): void {
+    if (room === 'citadel') {
+      this.returnToCitadel();
+      return;
+    }
+    this.realm = room;
+    this.bossBattle = null;
+    this.megaCutscene = null;
+    this.activeMissionId = null;
+    this.isekaiEnemies = [];
+    this.carriageEscort = null;
+    this.demonKings = [];
+    this.purpleFlameZones = [];
+    this.activeCastBanner = null;
+    this.projectiles = [];
+    this.isekaiPlatforms = buildIsekaiRoomPlatforms(room);
+    this.isekaiInteractables = buildIsekaiRoomInteractables(room);
+    this.isekaiNpcs =
+      room === 'isekai_town'
+        ? createTownNpcs(this.crownUnlocked)
+        : room === 'isekai_guild'
+          ? createGuildNpcs(this.crownUnlocked)
+          : room === 'isekai_wardrobe'
+            ? createWardrobeNpcs()
+            : [];
+
+    const bounds = ISEKAI_ROOM_BOUNDS[room];
+    this.player.x = Math.max(bounds.minX + 12, Math.min(bounds.maxX - 32, spawnX));
+    this.player.y = FLOOR_Y - this.player.h;
+    this.player.vx = 0;
+    this.player.vy = 0;
+    this.player.hp = this.player.maxHp;
+    this.player.stamina = this.player.maxStamina;
+    this.camX = Math.max(0, this.player.x - PIXEL_W * 0.34);
+    this.syncHostWorldMeta();
+    this.emitHud(true);
+  }
+
+  public startGuildMission(missionId: GuildMissionId, broadcastToParty = false): { ok: boolean; reason?: string } {
+    const mission = GUILD_MISSIONS.find((m) => m.id === missionId);
+    if (!mission) return { ok: false, reason: 'Unknown guild mission.' };
+    if (!canStartGuildMission(this.guildRank, missionId)) {
+      const msg = `Requires ${mission.rankReq}-Rank Badge (current: ${this.guildRank}-Rank).`;
+      this.showAnnouncement(msg);
+      return { ok: false, reason: msg };
+    }
+
+    this.realm = mission.realm;
+    this.activeMissionId = mission.id;
+    this.bossBattle = null;
+    this.megaCutscene = null;
+    this.coronationCutscene = null;
+    this.dialogue = null;
+    this.projectiles = [];
+    this.purpleFlameZones = [];
+    this.activeCastBanner = null;
+    this.activeCastBannerTimer = 0;
+    this.isekaiNpcs = [];
+    this.isekaiInteractables = [];
+    this.isekaiPlatforms = buildIsekaiRoomPlatforms(mission.realm);
+    this.isekaiKillsDone = 0;
+    this.isekaiKillsRequired = mission.killsRequired;
+    this.isekaiWaveIndex = 0;
+
+    if (mission.realm === 'goblin_dungeon') {
+      this.carriageEscort = null;
+      this.demonKings = [];
+      this.isekaiEnemies = createGoblinDungeonWave(mission.id, 0);
+      this.isekaiKillsRequired = this.isekaiEnemies.length;
+    } else if (mission.realm === 'carriage_escort') {
+      this.carriageEscort = createCarriageEscortInit();
+      this.demonKings = [];
+      this.isekaiEnemies = createBanditWave(this.carriageEscort.x, 0);
+      this.carriageEscort.wavesSpawned = 1;
+    } else if (mission.realm === 'demon_realm') {
+      this.carriageEscort = null;
+      this.demonKings = [];
+      this.isekaiEnemies = createDemonRealmWave();
+      this.isekaiKillsRequired = this.isekaiEnemies.length;
+    } else if (mission.realm === 'demon_king_arena') {
+      this.carriageEscort = null;
+      const init = createThreeDemonKingsInit(this.foughtIsekaiEnemies);
+      this.demonKings = init.demonKings;
+      this.isekaiEnemies = init.minions;
+      this.isekaiKillsRequired = this.demonKings.length;
+    }
+
+    this.player.x = 76;
+    this.player.y = FLOOR_Y - this.player.h;
+    this.player.vx = 0;
+    this.player.vy = 0;
+    this.player.hp = this.player.maxHp;
+    this.player.stamina = this.player.maxStamina;
+    this.camX = 0;
+
+    if (broadcastToParty && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'guild:mission_start', missionId }));
+    }
+
+    gameAudio.playBattleEncounterStinger();
+    this.showAnnouncement(`QUEST STARTED: [${mission.rankReq}-RANK] ${mission.title}!`);
+    this.syncHostWorldMeta();
+    this.emitHud(true);
+    return { ok: true };
+  }
+
+  public returnToCitadel(): void {
+    this.realm = 'citadel';
+    this.activeMissionId = null;
+    this.isekaiNpcs = [];
+    this.isekaiPlatforms = [];
+    this.isekaiInteractables = [];
+    this.isekaiEnemies = [];
+    this.carriageEscort = null;
+    this.demonKings = [];
+    this.purpleFlameZones = [];
+    this.activeCastBanner = null;
+    this.coronationCutscene = null;
+    this.projectiles = [];
+    this.player.x = this.player.highestCheckpointX;
+    this.player.y = FLOOR_Y - this.player.h;
+    this.player.vx = 0;
+    this.player.vy = 0;
+    this.player.idleTimer = 0;
+    this.chunks.clear();
+    this.chunksDirty = true;
+    this.ensureChunksAround(this.player.x);
+    this.camX = Math.max(-640, this.player.x - PIXEL_W * 0.34);
+    this.syncHostWorldMeta();
+    this.showAnnouncement('Returned to Bastera Endless Citadel!');
+    this.emitHud(true);
   }
 
   public setPlayerName(name: string): void {
@@ -582,10 +933,12 @@ export class BasteraGameEngine {
       this.modalPaused ||
       this.bossBattle ||
       this.megaCutscene ||
+      this.coronationCutscene ||
       this.volcanoBridgeFallTimer > 0
     ) {
       return;
     }
+    this.player.idleTimer = 0;
     if (this.heldKeys.has('ArrowLeft') || this.heldKeys.has('KeyA') || this.virtualInput.left) {
       this.player.facing = -1;
     } else if (this.heldKeys.has('ArrowRight') || this.heldKeys.has('KeyD') || this.virtualInput.right) {
@@ -695,6 +1048,73 @@ export class BasteraGameEngine {
       this.showAnnouncement(res.message);
     }
     this.emitHud(true);
+  }
+
+  public battleUseOrb(orbId: OrbId): void {
+    if (this.status !== 'playing') return;
+    if (this.bossBattle) {
+      const res = resolveBattleOrb(this.bossBattle, this.inventory, orbId);
+      if (res.ok) {
+        gameAudio.playSkill(
+          orbId === 'orb_flame'
+            ? 'candlefire_wave'
+            : orbId === 'orb_electric'
+              ? 'chrono_freeze'
+              : 'blade_dash',
+        );
+        this.trauma = Math.min(1, this.trauma + 0.45);
+      } else {
+        this.showAnnouncement(res.message);
+      }
+      this.emitHud(true);
+      return;
+    }
+
+    // Real-time Demon King Arena bossfight orb support
+    if (this.realm === 'demon_king_arena' && this.demonKings.length > 0) {
+      const orbItem = this.inventory.find((i) => i.id === orbId);
+      if (!orbItem || orbItem.count <= 0) {
+        this.showAnnouncement('No orbs of that element left!');
+        return;
+      }
+      const aliveKings = this.demonKings.filter((dk) => !dk.defeated && dk.hp > 0);
+      if (aliveKings.length === 0) return;
+
+      orbItem.count -= 1;
+      const targetKing = [...aliveKings].sort(
+        (a, b) => Math.abs(a.x - this.player.x) - Math.abs(b.x - this.player.x),
+      )[0];
+
+      if (orbId === 'orb_flame') {
+        const dmg = Math.max(1, Math.round(targetKing.maxHp * FLAME_ORB_HP_RATIO));
+        targetKing.hp = Math.max(0, targetKing.hp - dmg);
+        targetKing.hitFlash = 0.25;
+        this.spawnFloatingText(targetKing.x + targetKing.w / 2, targetKing.y - 14, `-${dmg} (25% HP)`, '#f97316');
+        this.spawnBurst(targetKing.x + targetKing.w / 2, targetKing.y + 18, 20, '#f97316');
+        this.showAnnouncement(`Flame Orb scorched ${targetKing.name} for ${dmg} DMG!`);
+        gameAudio.playSkill('candlefire_wave');
+        if (targetKing.hp <= 0) {
+          targetKing.defeated = true;
+          this.onDemonKingDefeated(targetKing);
+        }
+      } else if (orbId === 'orb_wind') {
+        for (const dk of aliveKings) {
+          dk.windVulnerable = true;
+          this.spawnBurst(dk.x + dk.w / 2, dk.y + 16, 12, '#2dd4bf');
+        }
+        this.showAnnouncement('Wind Orb: Demon Kings now take +30% EXTRA DMG!');
+        gameAudio.playSkill('blade_dash');
+      } else {
+        for (const dk of aliveKings) {
+          dk.stunTimer = 2.6;
+          this.spawnBurst(dk.x + dk.w / 2, dk.y + 16, 12, '#facc15');
+        }
+        this.showAnnouncement('Electrical Orb: Demon Kings STUNNED!');
+        gameAudio.playSkill('chrono_freeze');
+      }
+      this.trauma = Math.min(1, this.trauma + 0.35);
+      this.emitHud(true);
+    }
   }
 
   public battleRun(): void {
@@ -819,6 +1239,15 @@ export class BasteraGameEngine {
     for (let c = minC; c <= maxC; c++) {
       if (!this.chunks.has(c)) {
         const chunk = generateChunk(c);
+        if (chunk.boss && chunk.boss.def.isGyroBoss) {
+          const gyroDef = createGyroZeppeliBossDef(
+            this.player.maxHp,
+            calculateAttackDamage(this.player, 1, false),
+          );
+          chunk.boss.def = gyroDef;
+          chunk.boss.maxHp = gyroDef.maxHp;
+          chunk.boss.hp = gyroDef.maxHp;
+        }
         for (const en of chunk.enemies) {
           en.maxHp = Math.round(en.maxHp * monsterMult);
           en.hp = en.maxHp;
@@ -835,6 +1264,24 @@ export class BasteraGameEngine {
           if (prop.kind === 'chest' && this.openedChests.has(prop.id)) {
             prop.activated = true;
           }
+        }
+        if (
+          this.isekaiPortalOpen &&
+          c === Math.floor(this.player.x / CHUNK_WIDTH) &&
+          !chunk.interactables.some((p) => p.kind === 'isekai_portal')
+        ) {
+          chunk.interactables.push({
+            id: `isekai_portal_c${c}`,
+            x: chunk.startX + 440,
+            y: FLOOR_Y - 56,
+            w: 34,
+            h: 56,
+            kind: 'isekai_portal',
+            label: 'Dimensional Portal -> Isekai Solaris Town',
+            dialogue: ['A swirling Dimensional Gate linking Bastera Citadel to Solaris Isekai Town!'],
+            speaker: 'Dimensional Gate',
+            activated: false,
+          });
         }
         this.chunks.set(c, chunk);
         changed = true;
@@ -956,7 +1403,42 @@ export class BasteraGameEngine {
     // Trauma shake decay in real dt
     this.trauma = Math.max(0, this.trauma - dt * 2.4);
 
-    // Mega Boss Glitch-Crash Cutscene overrides exploration while active
+    if (this.activeCastBannerTimer > 0) {
+      this.activeCastBannerTimer = Math.max(0, this.activeCastBannerTimer - dt);
+      if (this.activeCastBannerTimer === 0) {
+        this.activeCastBanner = null;
+      }
+    }
+
+    // Royal S-Rank Coronation Cutscene overrides world movement until complete
+    if (this.coronationCutscene) {
+      this.clearAllInputs(true);
+      this.coronationCutscene.timer = Math.max(0, this.coronationCutscene.timer - dt);
+      if (this.coronationCutscene.timer <= 0) {
+        this.coronationCutscene = null;
+        this.crownUnlocked = true;
+        this.player.customization.crownEquipped = true;
+        this.guildRank = 'S';
+        this.isekaiCompleted = true;
+        this.enterIsekaiRoom('isekai_town', 310);
+        gameAudio.playSecretFound();
+        this.showSecretCaption(
+          'CROWNED ROYALTY · S-RANK SOVEREIGN!',
+          'You defeated all 3 Demon Kings and ascended to Royalty! All of Solaris Town celebrates your name!',
+        );
+        this.openDialogue('King Solaris & Princess Aurelia', 'throne', '#fbbf24', [
+          'Kneel no longer, Hero! By the Golden Sovereign Crown, you are now S-Rank Royalty of our Kingdom!',
+          'The townsfolk cheer across every cobblestone street! You may wear or store your Royal Crown anytime in the Wardrobe Shop!',
+        ]);
+        void this.saveCurrentGame('autosave', true);
+      } else {
+        this.emitHud();
+      }
+      this.justPressed.clear();
+      return;
+    }
+
+    // Mega Boss / Gyro Zeppeli Glitch-Crash Cutscene overrides exploration while active
     if (this.megaCutscene) {
       this.clearAllInputs(true);
       this.megaCutscene.timer = Math.max(0, this.megaCutscene.timer - dt);
@@ -978,9 +1460,14 @@ export class BasteraGameEngine {
       return;
     }
 
-    // Chunk 41 Bridge Slip & Fall into Volcano Pit sequence
+    // Chunk 41 Bridge Slip & Fall into Volcano Pit sequence (Citadel only)
     const bridgeEntryX = 41 * CHUNK_WIDTH + 54;
-    if (!this.volcanoBridgeFallTriggered && this.player.x >= bridgeEntryX && this.player.y >= FLOOR_Y - 64) {
+    if (
+      this.realm === 'citadel' &&
+      !this.volcanoBridgeFallTriggered &&
+      this.player.x >= bridgeEntryX &&
+      this.player.y >= FLOOR_Y - 64
+    ) {
       this.volcanoBridgeFallTriggered = true;
       this.volcanoBridgeFallTimer = 1.75;
       this.clearAllInputs(true);
@@ -1058,6 +1545,7 @@ export class BasteraGameEngine {
 
     // Handle quick actions from keyboard
     if (this.justPressed.has('KeyF') || this.justPressed.has('KeyE')) {
+      this.player.idleTimer = 0;
       if (this.dialogue) {
         this.advanceDialogue();
       } else {
@@ -1065,20 +1553,25 @@ export class BasteraGameEngine {
       }
     }
     if (this.justPressed.has('KeyJ') || this.justPressed.has('KeyZ')) {
+      this.player.idleTimer = 0;
       if (startWeaponAttack(this.player)) {
         gameAudio.playSwordSlash(this.player.equippedWeapon, this.player.comboStep);
       }
     }
     if (this.justPressed.has('Digit1') || this.justPressed.has('KeyQ')) {
+      this.player.idleTimer = 0;
       this.executeSkill(0);
     }
     if (this.justPressed.has('Digit2')) {
+      this.player.idleTimer = 0;
       this.executeSkill(1);
     }
     if (this.justPressed.has('Digit3') || this.justPressed.has('KeyR')) {
+      this.player.idleTimer = 0;
       this.executeSkill(2);
     }
     if (this.justPressed.has('KeyH')) {
+      this.player.idleTimer = 0;
       this.useItem('crimson_vial');
     }
 
@@ -1108,8 +1601,10 @@ export class BasteraGameEngine {
         this.justPressed.has('ArrowUp') ||
         this.justPressed.has('KeyW'));
 
-    const activeChunks = this.getActiveChunks();
-    const allPlatforms = this.getActivePlatforms();
+    const isIsekai = this.realm !== 'citadel';
+    const activeChunks = isIsekai ? [] : this.getActiveChunks();
+    const roomBounds = ISEKAI_ROOM_BOUNDS[this.realm];
+    const allPlatforms = isIsekai ? this.isekaiPlatforms : this.getActivePlatforms();
 
     const prevWalkCycle = this.player.walkCycle;
     const phys = stepPlayerPhysics(
@@ -1117,7 +1612,12 @@ export class BasteraGameEngine {
       { left, right, jumpJustPressed, jumpHeld },
       allPlatforms,
       dt,
+      roomBounds.minX,
     );
+    if (isIsekai && this.player.x > roomBounds.maxX - this.player.w) {
+      this.player.x = roomBounds.maxX - this.player.w;
+      this.player.vx = 0;
+    }
     if (
       this.player.onGround &&
       Math.abs(this.player.vx) > 14 &&
@@ -1125,15 +1625,30 @@ export class BasteraGameEngine {
     ) {
       const stepNum = Math.floor(this.player.walkCycle / Math.PI);
       gameAudio.playFootstep(this.getCurrentBiome(), stepNum);
-      this.spawnBurst(this.player.x + 8, this.player.y + this.player.h, 2, '#a3e635');
+      this.spawnBurst(this.player.x + 8, this.player.y + this.player.h, 2, isIsekai ? '#fef08a' : '#a3e635');
     }
     if (phys.jumped) {
+      this.player.idleTimer = 0;
       gameAudio.playJump();
       this.spawnBurst(this.player.x + 8, this.player.y + this.player.h, 5, '#d97706');
     }
     if (phys.landed) {
       gameAudio.playFootstep(this.getCurrentBiome(), 0);
       this.spawnBurst(this.player.x + 8, this.player.y + this.player.h, 4, '#94a3b8');
+    }
+
+    // 2-minute Idle Portal transport check in Citadel!
+    if (
+      shouldIdleTriggerIsekai(
+        this.realm,
+        this.player.idleTimer,
+        this.status === 'playing',
+        Boolean(this.bossBattle || this.megaCutscene || this.coronationCutscene || this.volcanoBridgeFallTimer > 0),
+      )
+    ) {
+      this.enterIsekaiTown('idle');
+      this.justPressed.clear();
+      return;
     }
 
     // Update sword attack phases & Star Platinum ORA ORA guardian barrage
@@ -1150,7 +1665,35 @@ export class BasteraGameEngine {
       }
     }
 
-    // Check automatic triggers (floor pressure plates & checkpoints)
+    const frozen = this.player.chronoFreezeTimer > 0;
+
+    if (isIsekai) {
+      const maxCam = Math.max(0, roomBounds.maxX - PIXEL_W);
+      const targetCamX = Math.max(0, Math.min(maxCam, this.player.x - PIXEL_W * 0.34));
+      this.camX += (targetCamX - this.camX) * Math.min(1, 9 * dt);
+
+      stepIsekaiNpcs(this.isekaiNpcs, dt);
+      this.stepIsekaiCombat(dt, frozen);
+      this.stepProjectiles(activeChunks, dt, frozen);
+      this.updateParticles(dt);
+
+      this.netSyncTimer += dt;
+      if (this.netSyncTimer >= 0.085) {
+        this.netSyncTimer = 0;
+        this.sendMultiplayerState();
+      }
+
+      this.hudEmitTimer += dt;
+      if (this.hudEmitTimer >= 0.1) {
+        this.hudEmitTimer = 0;
+        this.emitHud();
+      }
+
+      this.justPressed.clear();
+      return;
+    }
+
+    // Check automatic triggers (floor pressure plates & checkpoints & Citadel Isekai Portal)
     this.checkPassiveTriggers(activeChunks);
 
     // Secret Dark Sanctum discovery behind Checkpoint 1
@@ -1170,7 +1713,6 @@ export class BasteraGameEngine {
     this.camX += (targetCamX - this.camX) * Math.min(1, 9 * dt);
 
     // Update enemies & boss AI (bosses stand down during 60s 5-boss cooldown)
-    const frozen = this.player.chronoFreezeTimer > 0;
     this.stepEnemies(activeChunks, dt, frozen);
     if (this.bossCooldownSeconds <= 0) {
       this.stepBosses(activeChunks, dt, frozen);
@@ -1229,6 +1771,16 @@ export class BasteraGameEngine {
     this.clearAllInputs(true);
     this.player.attackPhase = 'none';
     this.player.walkCycle = 0;
+    if (boss.def.isGyroBoss) {
+      const exactPlayerAtk = calculateAttackDamage(this.player, 1, false);
+      const exactGyroHp = Math.max(300, Math.round(this.player.maxHp * 3));
+      const updated = createGyroZeppeliBossDef(this.player.maxHp, exactPlayerAtk);
+      boss.def = updated;
+      if (boss.hp === boss.maxHp || boss.maxHp < exactGyroHp) {
+        boss.maxHp = exactGyroHp;
+        boss.hp = exactGyroHp;
+      }
+    }
     this.encounterFlashTimer = 0.35;
     this.speedLineTimer = 0.65;
     this.bossBattle = createBossBattleState(boss);
@@ -1432,6 +1984,37 @@ export class BasteraGameEngine {
       }
     }
 
+    // Isekai real-time dungeon enemies & A-Rank Demon Kings
+    for (const en of this.isekaiEnemies) {
+      if (en.state === 'ko') continue;
+      if (rectsOverlap(hb.x, hb.y, hb.w, hb.h, en.x, en.y, en.w, en.h)) {
+        const res = applyDamageToEnemy(en, dmg, kb);
+        this.spawnFloatingText(en.x + en.w / 2, en.y - 4, `${dmg}`, '#fde047');
+        this.spawnBurst(en.x + en.w / 2, en.y + 10, 10, '#f97316');
+        landedHit = true;
+        if (res.killed) {
+          this.onIsekaiEnemyKilled(en);
+        }
+      }
+    }
+
+    for (const dk of this.demonKings) {
+      if (dk.defeated || dk.hp <= 0) continue;
+      if (rectsOverlap(hb.x, hb.y, hb.w, hb.h, dk.x, dk.y, dk.w, dk.h)) {
+        const dkDmg = dk.windVulnerable ? Math.round(dmg * (1 + WIND_ORB_DAMAGE_BONUS)) : dmg;
+        dk.hp = Math.max(0, dk.hp - dkDmg);
+        dk.hitFlash = 0.16;
+        dk.vx = kb * 0.45;
+        this.spawnFloatingText(dk.x + dk.w / 2, dk.y - 6, `${dkDmg}`, '#f0abfc');
+        this.spawnBurst(dk.x + dk.w / 2, dk.y + 18, 14, '#c084fc');
+        landedHit = true;
+        if (dk.hp <= 0) {
+          dk.defeated = true;
+          this.onDemonKingDefeated(dk);
+        }
+      }
+    }
+
     if (landedHit) {
       this.hitstopTimer = 0.04;
       this.trauma = Math.min(1, this.trauma + 0.32);
@@ -1447,7 +2030,7 @@ export class BasteraGameEngine {
     gameAudio.playSkill(res.skillId);
     this.spawnBurst(this.player.x + 8, this.player.y + 12, 14, skill.color);
 
-    const chunks = this.getActiveChunks();
+    const chunks = this.realm === 'citadel' ? this.getActiveChunks() : [];
 
     if (res.skillId === 'blade_dash') {
       this.player.vx = this.player.facing * 465;
@@ -1551,6 +2134,36 @@ export class BasteraGameEngine {
       }
     }
 
+    for (const en of this.isekaiEnemies) {
+      if (en.state === 'ko') continue;
+      if (rectsOverlap(zoneX, zoneY, zoneW, zoneH, en.x, en.y, en.w, en.h)) {
+        const res = applyDamageToEnemy(en, dmg, kb);
+        this.spawnFloatingText(en.x + en.w / 2, en.y - 6, `ORA! ${dmg}`, '#d8b4fe');
+        this.spawnBurst(en.x + en.w / 2, en.y + 10, 6, '#fbbf24');
+        landedHit = true;
+        if (res.killed) {
+          this.onIsekaiEnemyKilled(en);
+        }
+      }
+    }
+
+    for (const dk of this.demonKings) {
+      if (dk.defeated || dk.hp <= 0) continue;
+      if (rectsOverlap(zoneX, zoneY, zoneW, zoneH, dk.x, dk.y, dk.w, dk.h)) {
+        const dkDmg = dk.windVulnerable ? Math.round(dmg * (1 + WIND_ORB_DAMAGE_BONUS)) : dmg;
+        dk.hp = Math.max(0, dk.hp - dkDmg);
+        dk.hitFlash = 0.14;
+        dk.vx = kb * 0.35;
+        this.spawnFloatingText(dk.x + dk.w / 2, dk.y - 8, `ORA! ${dkDmg}`, '#d8b4fe');
+        this.spawnBurst(dk.x + dk.w / 2, dk.y + 18, 8, '#fbbf24');
+        landedHit = true;
+        if (dk.hp <= 0) {
+          dk.defeated = true;
+          this.onDemonKingDefeated(dk);
+        }
+      }
+    }
+
     if (landedHit) {
       this.trauma = Math.min(1, this.trauma + 0.16);
       gameAudio.playHit(true);
@@ -1559,6 +2172,34 @@ export class BasteraGameEngine {
   }
 
   private tryInteract(): void {
+    if (this.realm !== 'citadel') {
+      for (const prop of this.isekaiInteractables) {
+        if (
+          rectsOverlap(
+            this.player.x - 14,
+            this.player.y - 8,
+            this.player.w + 28,
+            this.player.h + 16,
+            prop.x,
+            prop.y,
+            prop.w,
+            prop.h,
+          )
+        ) {
+          this.activateIsekaiInteractable(prop);
+          return;
+        }
+      }
+      for (const npc of this.isekaiNpcs) {
+        if (Math.abs(this.player.x - npc.x) < 34) {
+          const lines = this.crownUnlocked && npc.crownedDialogue ? npc.crownedDialogue : npc.dialogue;
+          this.openDialogue(npc.name, 'npc', npc.coatColor, lines);
+          return;
+        }
+      }
+      return;
+    }
+
     const chunks = this.getActiveChunks();
     for (const ch of chunks) {
       for (const prop of ch.interactables) {
@@ -1581,9 +2222,54 @@ export class BasteraGameEngine {
     }
   }
 
+  private activateIsekaiInteractable(prop: InteractableProp): void {
+    if (prop.kind === 'guild_door') {
+      gameAudio.playSecretFound();
+      this.enterIsekaiRoom('isekai_guild', 72);
+    } else if (prop.kind === 'wardrobe_door') {
+      gameAudio.playSecretFound();
+      this.enterIsekaiRoom('isekai_wardrobe', 72);
+    } else if (prop.kind === 'town_exit_door') {
+      gameAudio.playSecretFound();
+      const targetX = this.realm === 'isekai_wardrobe' ? 680 : 475;
+      this.enterIsekaiRoom('isekai_town', targetX);
+    } else if (prop.kind === 'guild_reception') {
+      gameAudio.playSecretFound();
+      this.uiCallbacks.onOpenGuild?.();
+    } else if (prop.kind === 'wardrobe_counter') {
+      gameAudio.playSecretFound();
+      this.uiCallbacks.onOpenWardrobe?.();
+    } else if (prop.kind === 'guild_bar') {
+      this.player.hp = this.player.maxHp;
+      this.player.stamina = this.player.maxStamina;
+      this.openDialogue(prop.speaker, 'npc', '#d97706', prop.dialogue);
+      this.emitHud();
+    } else {
+      this.openDialogue(prop.label, 'npc', '#fbbf24', prop.dialogue);
+    }
+  }
+
   private checkPassiveTriggers(chunks: GeneratedChunk[]): void {
     for (const ch of chunks) {
       for (const prop of ch.interactables) {
+        if (prop.kind === 'isekai_portal') {
+          if (
+            rectsOverlap(
+              this.player.x,
+              this.player.y,
+              this.player.w,
+              this.player.h,
+              prop.x + 6,
+              prop.y,
+              Math.max(12, prop.w - 12),
+              prop.h,
+            )
+          ) {
+            this.enterIsekaiTown('gyro');
+            return;
+          }
+          continue;
+        }
         if (prop.activated) continue;
         if (
           (prop.kind === 'pressure_plate' || prop.kind === 'checkpoint') &&
@@ -1605,6 +2291,11 @@ export class BasteraGameEngine {
   }
 
   private activateInteractable(prop: InteractableProp, chunk: GeneratedChunk): void {
+    if (prop.kind === 'isekai_portal') {
+      this.enterIsekaiTown('gyro');
+      return;
+    }
+
     if (prop.kind === 'escape_gate') {
       this.setStatus('victory');
       return;
@@ -1699,6 +2390,19 @@ export class BasteraGameEngine {
     );
   }
 
+  private tryRollOrbDrop(x: number, y: number): void {
+    const orbId = rollMonsterOrbDrop();
+    if (!orbId) return;
+    addInventoryResource(this.inventory, orbId, 1);
+    const orbItem = this.inventory.find((i) => i.id === orbId);
+    const orbColor = orbItem?.color ?? '#38bdf8';
+    const orbLabel = orbItem ? orbItem.name.toUpperCase() : 'ELEMENTAL ORB';
+    this.spawnBurst(x, y, 14, orbColor);
+    this.spawnFloatingText(x, y - 32, `+1 ${orbLabel}!`, orbColor);
+    this.showAnnouncement(`Orb Drop! Found ${orbItem?.name ?? orbId} (Use in Bossfights)!`);
+    gameAudio.playSecretFound();
+  }
+
   private onEnemyKilled(enemy: EnemyState): void {
     this.player.gold += enemy.rewardGold;
     const prevLevel = this.player.level;
@@ -1716,13 +2420,80 @@ export class BasteraGameEngine {
     if (Math.random() < 0.2) {
       addInventoryResource(this.inventory, 'crimson_vial', 1);
     }
+    this.tryRollOrbDrop(enemy.x + enemy.w / 2, enemy.y);
     this.spawnFloatingText(enemy.x + enemy.w / 2, enemy.y - 12, `+${enemy.rewardGold}G`, '#fbbf24');
     this.spawnFloatingText(enemy.x + enemy.w / 2, enemy.y - 22, `+${pts} STAT PT`, '#38bdf8');
     this.emitHud();
   }
 
+  private onIsekaiEnemyKilled(enemy: EnemyState): void {
+    if (!this.foughtIsekaiEnemies.includes(enemy.archetype)) {
+      this.foughtIsekaiEnemies.push(enemy.archetype);
+    }
+    this.player.gold += enemy.rewardGold;
+    grantKillStatPoints(this.player, 'monster');
+    this.isekaiKillsDone += 1;
+    this.tryRollOrbDrop(enemy.x + enemy.w / 2, enemy.y);
+    this.spawnFloatingText(enemy.x + enemy.w / 2, enemy.y - 12, `+${enemy.rewardGold}G`, '#fbbf24');
+    this.emitHud();
+  }
+
+  private onDemonKingDefeated(dk: DemonKingEntity): void {
+    this.player.gold += 250;
+    grantKillStatPoints(this.player, 'boss');
+    this.isekaiKillsDone += 1;
+    this.spawnBurst(dk.x + dk.w / 2, dk.y + dk.h / 2, 26, '#e879f9');
+    this.showAnnouncement(`${dk.name} Vanquished!`);
+    this.emitHud(true);
+  }
+
   private onBossDefeated(boss: ActiveBoss): void {
     const isMega = Boolean(boss.def.isMegaBoss);
+    const isGyro = Boolean(boss.def.isGyroBoss);
+
+    if (isGyro) {
+      this.gyroDefeated = true;
+      this.isekaiPortalOpen = true;
+      this.defeatedBosses.add(boss.def.index);
+      this.player.bossesDefeated = Math.max(this.player.bossesDefeated, this.defeatedBosses.size);
+      this.player.gold += 900;
+      this.player.statPoints += 30;
+      this.hitstopTimer = 0.12;
+      this.trauma = 0.95;
+      this.clearAllInputs(true);
+      this.postBossInputLockTimer = 0.45;
+      gameAudio.playSecretFound();
+
+      const ch = this.chunks.get(this.getCurrentChunkIndex());
+      if (ch && !ch.interactables.some((p) => p.kind === 'isekai_portal')) {
+        ch.interactables.push({
+          id: `isekai_portal_gyro_${Math.round(this.simTime)}`,
+          x: Math.max(ch.startX + 120, Math.min(ch.endX - 64, Math.round(this.player.x + 82))),
+          y: FLOOR_Y - 56,
+          w: 34,
+          h: 56,
+          kind: 'isekai_portal',
+          label: 'Enter Isekai Dimensional Portal',
+          dialogue: ['A glowing Azure-Gold Dimensional Portal! Step inside or press [F] to travel to the Isekai Town!'],
+          speaker: 'Dimensional Portal',
+          activated: false,
+        });
+      }
+
+      this.showSecretCaption(
+        'FINAL CITADEL BOSS DEFEATED: GYRO ZEPPELI!',
+        'A Dimensional Portal tore open ahead! Step inside or press [F] to enter the Isekai Realm!',
+      );
+      this.openDialogue('Gyro Zeppeli', 'boss', '#22c55e', [
+        'Nyo-ho...! Not bad at all! Lesson 5 complete—that golden spin opened a Dimensional Portal right beside you!',
+        'Step into the swirling Isekai Gate ahead to awaken in the sunny Medieval Fantasy Town!',
+      ]);
+      gameAudio.startMusic(this.getCurrentBiome(), null);
+      void this.saveCurrentGame('autosave', true);
+      this.emitHud(true);
+      return;
+    }
+
     if (isMega) {
       this.player.gold += 450;
       const bonusPts = 25;
@@ -1775,6 +2546,44 @@ export class BasteraGameEngine {
     this.syncHostWorldMeta();
     this.completeBossEncounterProgress();
     void this.saveCurrentGame('autosave', true);
+
+    // After the 100th boss, Final Boss GYRO ZEPPELI crashes in with a dramatic cutscene!
+    if (boss.def.index === 100 && !this.defeatedBosses.has(101) && canPlayerEngageBoss(this.worldRole)) {
+      const gyroDef = createGyroZeppeliBossDef(
+        this.player.maxHp,
+        calculateAttackDamage(this.player, 1, false),
+      );
+      const gyroBoss: ActiveBoss = {
+        def: gyroDef,
+        x: this.player.x + 150,
+        y: FLOOR_Y - 52,
+        vx: 0,
+        vy: 0,
+        w: 36,
+        h: 52,
+        hp: gyroDef.maxHp,
+        maxHp: gyroDef.maxHp,
+        facing: -1,
+        state: 'intro',
+        stateTimer: 1.0,
+        hitFlash: 0,
+        posePhase: 0,
+        arenaMinX: this.player.x - 120,
+        arenaMaxX: this.player.x + 280,
+        defeated: false,
+      };
+      this.megaCutscene = {
+        archetype: 'gyro_zeppeli',
+        pendingBoss: gyroBoss,
+        timer: 3.3,
+        duration: 3.3,
+      };
+      this.trauma = 1.0;
+      gameAudio.playMegaGlitchCrash();
+      this.showAnnouncement('!! 100TH BOSS CLEARED: FINAL BOSS GYRO ZEPPELI APPEARS !!');
+      this.emitHud(true);
+      return;
+    }
 
     // 10% chance a Dimensional Glitch-Crash spawns a colossal Mega Boss (suppressed during 60s 5-boss cooldown)
     if (this.bossCooldownSeconds <= 0 && canPlayerEngageBoss(this.worldRole) && shouldTriggerMegaBossGlitch()) {
@@ -2130,6 +2939,255 @@ export class BasteraGameEngine {
     }
   }
 
+  private stepIsekaiCombat(dt: number, frozen: boolean): void {
+    const mission = this.activeMissionId
+      ? GUILD_MISSIONS.find((m) => m.id === this.activeMissionId)
+      : null;
+    if (!mission) return;
+
+    // 1. Update Carriage Escort progress & bandit waves (C Rank)
+    if (this.realm === 'carriage_escort' && this.carriageEscort) {
+      const car = this.carriageEscort;
+      car.hitFlash = Math.max(0, car.hitFlash - dt);
+      const blockingBandits = this.isekaiEnemies.filter(
+        (e) => e.state !== 'ko' && Math.abs(e.x - car.x) < 120,
+      );
+      if (!frozen && blockingBandits.length === 0) {
+        car.x = Math.min(1040, car.x + car.speed * dt);
+        car.wheelPhase += dt * 7;
+        car.progress = Math.min(100, Math.round(((car.x - 150) / 890) * 100));
+      }
+      if (car.progress >= 30 && car.wavesSpawned < 2) {
+        car.wavesSpawned = 2;
+        this.isekaiEnemies.push(...createBanditWave(car.x, 1));
+        this.showAnnouncement('Bandit Ambush! Protect Princess Aurelia’s Carriage!');
+      } else if (car.progress >= 65 && car.wavesSpawned < 3) {
+        car.wavesSpawned = 3;
+        this.isekaiEnemies.push(...createBanditWave(car.x, 2));
+        this.showAnnouncement('Final Highway Brigand Wave Ahead!');
+      }
+      if (car.hp <= 0) {
+        this.showAnnouncement('Royal Carriage wrecked! Returning to Solaris Guild...');
+        this.enterIsekaiRoom('isekai_guild', 120);
+        return;
+      }
+    }
+
+    // 2. Step Isekai Enemies (Goblins, Hobgoblins, Bandits, Succubi, Demon Tanks, Lightning Fighters)
+    for (const en of this.isekaiEnemies) {
+      en.hitFlash = Math.max(0, en.hitFlash - dt);
+      if (en.state === 'ko') {
+        en.koTimer -= dt;
+        en.x += en.vx * dt;
+        en.y += en.vy * dt;
+        en.vy += 320 * dt;
+        continue;
+      }
+      if (frozen) continue;
+
+      const targetCar = this.realm === 'carriage_escort' && this.carriageEscort ? this.carriageEscort : null;
+      const targetX =
+        targetCar && Math.abs(targetCar.x + 28 - en.x) < Math.abs(this.player.x - en.x)
+          ? targetCar.x + 28
+          : this.player.x;
+      const targetIsCarriage = targetCar && targetX === targetCar.x + 28;
+      const dx = targetX - en.x;
+      const dist = Math.abs(dx);
+      const dmg = en.attackDamage ?? 11;
+      en.stateTimer -= dt;
+      en.facing = dx >= 0 ? 1 : -1;
+
+      if (en.archetype === 'bandit_archer' || en.archetype === 'demon_succubus') {
+        const isSuccubus = en.archetype === 'demon_succubus';
+        if (isSuccubus) {
+          const hoverY = FLOOR_Y - 68 + Math.sin(this.simTime * 3 + en.patrolOriginX) * 10;
+          en.y += (hoverY - en.y) * 4 * dt;
+        }
+        if (en.state === 'patrol') {
+          if (dist < 75) en.x -= en.facing * 42 * dt;
+          else if (dist > 165) en.x += en.facing * 38 * dt;
+          if (dist < 260 && en.stateTimer <= 0) {
+            en.state = 'windup';
+            en.stateTimer = 0.45;
+          }
+        } else if (en.state === 'windup' && en.stateTimer <= 0) {
+          en.state = 'attack';
+          en.stateTimer = 0.25;
+          this.projectiles.push({
+            id: `ispr_${this.simTime}_${en.id}`,
+            x: en.x + en.w / 2,
+            y: en.y + 10,
+            vx: en.facing * (isSuccubus ? 165 : 185),
+            vy: 0,
+            radius: isSuccubus ? 5 : 4,
+            damage: dmg,
+            fromPlayer: false,
+            color: isSuccubus ? '#ec4899' : '#fde047',
+            life: 2.2,
+            kind: isSuccubus ? 'succubus_orb' : 'arrow',
+          });
+        } else if (en.state === 'attack' && en.stateTimer <= 0) {
+          en.state = 'recover';
+          en.stateTimer = isSuccubus ? 1.15 : 1.35;
+        } else if (en.state === 'recover' && en.stateTimer <= 0) {
+          en.state = 'patrol';
+        }
+      } else {
+        const spd =
+          en.archetype === 'demon_lightning'
+            ? 84
+            : en.archetype === 'demon_tank'
+              ? 38
+              : en.archetype === 'hobgoblin'
+                ? 48
+                : 58;
+        if (en.state === 'patrol') {
+          if (dist > 26 && dist < 340) en.vx = en.facing * spd;
+          else if (dist <= 26) {
+            en.vx = 0;
+            en.state = 'windup';
+            en.stateTimer = en.archetype === 'demon_lightning' ? 0.26 : 0.42;
+          }
+        } else if (en.state === 'windup' && en.stateTimer <= 0) {
+          en.state = 'attack';
+          en.stateTimer = 0.24;
+          en.vx = en.facing * (en.archetype === 'demon_lightning' ? 175 : 70);
+          if (targetIsCarriage && targetCar && dist < 38) {
+            targetCar.hp = Math.max(0, targetCar.hp - dmg);
+            targetCar.hitFlash = 0.2;
+            this.spawnFloatingText(targetCar.x + 28, targetCar.y - 6, `-${dmg}`, '#f87171');
+          } else if (Math.abs(this.player.x - en.x) < 34 && Math.abs(this.player.y - en.y) < 30) {
+            this.damagePlayer(dmg, en.facing * 120);
+          }
+        } else if (en.state === 'attack' && en.stateTimer <= 0) {
+          en.state = 'recover';
+          en.stateTimer = en.archetype === 'demon_lightning' ? 0.55 : 0.78;
+        } else if (en.state === 'recover' && en.stateTimer <= 0) {
+          en.state = 'patrol';
+        }
+        en.x += en.vx * dt;
+        en.vx *= 0.86;
+      }
+      const rb = ISEKAI_ROOM_BOUNDS[this.realm];
+      en.x = Math.max(rb.minX, Math.min(rb.maxX - en.w, en.x));
+    }
+    this.isekaiEnemies = this.isekaiEnemies.filter((e) => !(e.state === 'ko' && e.koTimer <= 0));
+
+    // 3. Step 3 Demon Kings (A-Rank normal real-time canvas combat, casting diverse purple flame skills every 2s!)
+    if (this.realm === 'demon_king_arena') {
+      for (const dk of this.demonKings) {
+        dk.hitFlash = Math.max(0, dk.hitFlash - dt);
+        if (dk.activeSkillTimer > 0) {
+          dk.activeSkillTimer = Math.max(0, dk.activeSkillTimer - dt);
+          if (dk.activeSkillTimer === 0) dk.activeSkillBanner = null;
+        }
+        if ((dk.stunTimer ?? 0) > 0) {
+          dk.stunTimer = Math.max(0, (dk.stunTimer ?? 0) - dt);
+        }
+        if (dk.defeated || dk.hp <= 0 || frozen || (dk.stunTimer ?? 0) > 0) continue;
+
+        const dx = this.player.x - dk.x;
+        const dist = Math.abs(dx);
+        dk.facing = dx >= 0 ? 1 : -1;
+        if (dist > 64) {
+          dk.vx += dk.facing * 52 * dt;
+        }
+        dk.x = Math.max(36, Math.min(590, dk.x + dk.vx * dt));
+        dk.vx *= 0.88;
+
+        dk.purpleFlameTimer -= dt;
+        if (dk.purpleFlameTimer <= 0) {
+          dk.purpleFlameTimer = 2.0; // Every 2 seconds!
+          dk.castIndex += 1;
+          const cast = createDemonKingPurpleFlameCast(dk, dk.castIndex, this.player.x, FLOOR_Y);
+          dk.activeSkillBanner = cast.skillName;
+          dk.activeSkillTimer = 1.4;
+          this.activeCastBanner = `${dk.name}: ${cast.skillName}!`;
+          this.activeCastBannerTimer = 1.6;
+          this.purpleFlameZones.push(...cast.zones);
+          this.projectiles.push(...cast.projectiles);
+          this.spawnBurst(dk.x + dk.w / 2, dk.y + 18, 12, '#c084fc');
+          gameAudio.playSkill('candlefire_wave');
+        }
+      }
+
+      for (let i = this.purpleFlameZones.length - 1; i >= 0; i--) {
+        const z = this.purpleFlameZones[i];
+        if (!frozen) {
+          z.life -= dt;
+        }
+        if (
+          !z.hasHit &&
+          rectsOverlap(z.x + 2, z.y + 10, z.w - 4, z.h - 10, this.player.x, this.player.y, this.player.w, this.player.h)
+        ) {
+          z.hasHit = true;
+          this.damagePlayer(z.damage, this.player.facing * -90);
+        }
+        if (z.life <= 0) {
+          this.purpleFlameZones.splice(i, 1);
+        }
+      }
+    }
+
+    // 4. Mission Completion Check!
+    let completed = false;
+    if (this.realm === 'goblin_dungeon' || this.realm === 'demon_realm') {
+      completed = this.isekaiEnemies.length === 0;
+    } else if (this.realm === 'carriage_escort' && this.carriageEscort) {
+      completed = this.carriageEscort.progress >= 100 && this.isekaiEnemies.length === 0;
+    } else if (this.realm === 'demon_king_arena') {
+      completed = this.demonKings.length > 0 && this.demonKings.every((dk) => dk.defeated || dk.hp <= 0);
+    }
+
+    if (completed) {
+      this.onIsekaiMissionComplete(mission.id);
+    }
+  }
+
+  private onIsekaiMissionComplete(missionId: GuildMissionId): void {
+    const mission = GUILD_MISSIONS.find((m) => m.id === missionId);
+    if (!mission) return;
+    this.activeMissionId = null;
+    this.isekaiEnemies = [];
+    this.purpleFlameZones = [];
+    this.projectiles = [];
+    this.activeCastBanner = null;
+    this.player.gold += mission.rewardGold;
+    this.player.statPoints += 6;
+    const promo = promoteGuildRankAfterMission(this.guildRank, mission.id, this.inventory);
+    this.guildRank = promo.nextRank;
+    addInventoryResource(this.inventory, 'crimson_vial', 1);
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'guild:mission_complete', missionId, newRank: this.guildRank }));
+    }
+
+    if (mission.id === 'a_three_demon_kings') {
+      this.coronationCutscene = {
+        timer: 4.5,
+        duration: 4.5,
+      };
+      gameAudio.playSecretFound();
+      this.emitHud(true);
+      return;
+    }
+
+    this.enterIsekaiRoom('isekai_guild', 160);
+    gameAudio.playSecretFound();
+    this.showSecretCaption(
+      promo.promoted ? `PROMOTED TO ${promo.nextRank}-RANK ADVENTURER!` : `QUEST CLEARED: ${mission.title}`,
+      `+${mission.rewardGold}G & +6 Stat Points earned! Speak to Receptionist Elena for your next Rank Mission!`,
+    );
+    this.openDialogue('Receptionist Elena', 'npc', '#38bdf8', [
+      `Splendid work! "${mission.title}" is officially stamped COMPLETE!`,
+      promo.promoted
+        ? `Here is your gleaming ${promo.nextRank}-Rank Guild Badge! New missions are unlocked on the Guild Board!`
+        : `Reward +${mission.rewardGold}G delivered! Ready for your next quest whenever you are.`,
+    ]);
+    void this.saveCurrentGame('autosave', true);
+    this.emitHud(true);
+  }
+
   private stepProjectiles(chunks: GeneratedChunk[], dt: number, frozen: boolean): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i];
@@ -2169,11 +3227,62 @@ export class BasteraGameEngine {
             }
           }
         }
+        if (!hit) {
+          for (const en of this.isekaiEnemies) {
+            if (en.state === 'ko') continue;
+            if (rectsOverlap(pr.x - pr.radius, pr.y - pr.radius, pr.radius * 2, pr.radius * 2, en.x, en.y, en.w, en.h)) {
+              const res = applyDamageToEnemy(en, pr.damage, Math.sign(pr.vx) * 90);
+              this.spawnFloatingText(en.x + 8, en.y - 4, `${pr.damage}`, '#fb923c');
+              this.spawnBurst(pr.x, pr.y, 8, pr.color);
+              if (res.killed) this.onIsekaiEnemyKilled(en);
+              hit = true;
+              break;
+            }
+          }
+        }
+        if (!hit) {
+          for (const dk of this.demonKings) {
+            if (dk.defeated || dk.hp <= 0) continue;
+            if (rectsOverlap(pr.x - pr.radius, pr.y - pr.radius, pr.radius * 2, pr.radius * 2, dk.x, dk.y, dk.w, dk.h)) {
+              const dkDmg = dk.windVulnerable ? Math.round(pr.damage * (1 + WIND_ORB_DAMAGE_BONUS)) : pr.damage;
+              dk.hp = Math.max(0, dk.hp - dkDmg);
+              dk.hitFlash = 0.14;
+              this.spawnFloatingText(dk.x + dk.w / 2, dk.y - 6, `${dkDmg}`, '#f0abfc');
+              this.spawnBurst(pr.x, pr.y, 10, '#c084fc');
+              if (dk.hp <= 0) {
+                dk.defeated = true;
+                this.onDemonKingDefeated(dk);
+              }
+              hit = true;
+              break;
+            }
+          }
+        }
         if (hit) {
           gameAudio.playHit(false);
           this.projectiles.splice(i, 1);
         }
       } else {
+        if (
+          this.realm === 'carriage_escort' &&
+          this.carriageEscort &&
+          rectsOverlap(
+            pr.x - pr.radius,
+            pr.y - pr.radius,
+            pr.radius * 2,
+            pr.radius * 2,
+            this.carriageEscort.x,
+            this.carriageEscort.y,
+            56,
+            46,
+          )
+        ) {
+          this.carriageEscort.hp = Math.max(0, this.carriageEscort.hp - pr.damage);
+          this.carriageEscort.hitFlash = 0.2;
+          this.spawnFloatingText(this.carriageEscort.x + 28, this.carriageEscort.y - 6, `-${pr.damage}`, '#f87171');
+          this.projectiles.splice(i, 1);
+          continue;
+        }
         if (
           rectsOverlap(
             pr.x - pr.radius,
@@ -2323,6 +3432,29 @@ export class BasteraGameEngine {
     ctx.save();
     ctx.translate(0, Math.round(shakeY));
 
+    // Royal S-Rank Coronation Cutscene Layer
+    if (this.coronationCutscene && this.status === 'playing') {
+      const cc = this.coronationCutscene;
+      const elapsed = cc.duration - cc.timer;
+      const prog = Math.max(0, Math.min(1, elapsed / cc.duration));
+      const phase: CoronationCutsceneHud['phase'] =
+        prog < 0.35 ? 'approach' : prog < 0.72 ? 'crowning' : 'cheering';
+      const subtitle =
+        phase === 'approach'
+          ? 'All 3 Demon Kings have fallen — Solaris Cathedral opens!'
+          : phase === 'crowning'
+            ? 'The Sovereign Crown descends upon the Hero of Solaris!'
+            : 'Long live our new S-Rank Royalty! The whole town rejoices!';
+      drawCoronationCutscene(
+        ctx,
+        { phase, progress: prog, subtitle },
+        this.player.customization,
+        this.simTime,
+      );
+      ctx.restore();
+      return;
+    }
+
     const biome = this.status === 'title' ? 'castle' : this.getCurrentBiome();
 
     if (this.bossBattle && this.status === 'playing') {
@@ -2341,6 +3473,7 @@ export class BasteraGameEngine {
         b.guardActive,
         b.bossFrozenTurns,
         this.simTime,
+        b.windVulnerable,
       );
       if (this.encounterFlashTimer > 0) {
         ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(0.75, this.encounterFlashTimer * 2.2)})`;
@@ -2350,44 +3483,103 @@ export class BasteraGameEngine {
       return;
     }
 
-    drawBiomeBackdrop(ctx, biome, renderCamX, this.simTime);
-
-    const chunks = this.getActiveChunks();
     const frozen = this.player.chronoFreezeTimer > 0;
+    const isIsekai = this.status === 'playing' && this.realm !== 'citadel';
 
-    for (const ch of chunks) {
-      drawPlatforms(ctx, ch.platforms, ch.biome, renderCamX, this.simTime);
-      if (ch.index === 41) {
-        drawVolcanoPitChasm(ctx, ch.startX, 190, renderCamX, this.simTime);
+    if (isIsekai) {
+      if (this.realm === 'isekai_town') {
+        drawIsekaiTownBackdrop(ctx, renderCamX, this.simTime, this.crownUnlocked);
+      } else if (this.realm === 'isekai_guild') {
+        drawIsekaiGuildInterior(ctx, renderCamX, this.simTime);
+      } else if (this.realm === 'isekai_wardrobe') {
+        drawIsekaiWardrobeInterior(ctx, renderCamX);
+      } else if (this.realm === 'goblin_dungeon') {
+        drawGoblinDungeonBackdrop(ctx, renderCamX, this.simTime);
+      } else if (this.realm === 'carriage_escort') {
+        drawCarriageEscortBackdrop(ctx, renderCamX, this.simTime);
+      } else if (this.realm === 'demon_realm' || this.realm === 'demon_king_arena') {
+        drawDemonRealmBackdrop(ctx, renderCamX, this.simTime);
       }
-      drawCandles(ctx, ch.candles, renderCamX, this.simTime);
-      drawInteractables(
+
+      const platBiome: BiomeId =
+        this.realm === 'demon_realm' || this.realm === 'demon_king_arena'
+          ? 'volcano'
+          : this.realm === 'carriage_escort'
+            ? 'forest'
+            : 'castle';
+      drawIsekaiFloors(ctx, this.realm, renderCamX, this.simTime);
+      drawPlatforms(
         ctx,
-        ch.interactables,
-        ch.hiddenPassage ? [ch.hiddenPassage] : [],
+        this.isekaiPlatforms.filter((p) => p.kind !== 'floor'),
+        platBiome,
         renderCamX,
         this.simTime,
       );
-    }
+      drawInteractables(ctx, this.isekaiInteractables, [], renderCamX, this.simTime);
 
-    // Multiplayer peers in dungeon
-    for (const peer of this.peers.values()) {
-      drawPeer(ctx, peer, renderCamX, this.simTime);
-    }
+      for (const peer of this.peers.values()) {
+        drawPeer(ctx, peer, renderCamX, this.simTime);
+      }
 
-    // Enemies & JoJo Bosses
-    for (const ch of chunks) {
-      for (const en of ch.enemies) {
+      if (this.isekaiNpcs.length > 0) {
+        drawIsekaiNpcs(ctx, this.isekaiNpcs, renderCamX, this.simTime, this.crownUnlocked);
+      }
+      if (this.carriageEscort) {
+        drawRoyalCarriage(ctx, this.carriageEscort, renderCamX, this.simTime);
+      }
+      for (const en of this.isekaiEnemies) {
         drawEnemy(ctx, en, renderCamX, this.simTime, frozen);
       }
-      if (ch.boss && (!ch.boss.defeated || ch.boss.state === 'ko')) {
-        drawJoJoBoss(ctx, ch.boss, renderCamX, this.simTime, frozen);
+      if (this.demonKings.length > 0) {
+        drawDemonKings(ctx, this.demonKings, renderCamX, this.simTime, frozen);
+        drawPurpleFlameZones(ctx, this.purpleFlameZones, renderCamX, this.simTime);
+      }
+    } else {
+      drawBiomeBackdrop(ctx, biome, renderCamX, this.simTime);
+
+      const chunks = this.getActiveChunks();
+
+      for (const ch of chunks) {
+        drawPlatforms(ctx, ch.platforms, ch.biome, renderCamX, this.simTime);
+        if (ch.index === 41) {
+          drawVolcanoPitChasm(ctx, ch.startX, 190, renderCamX, this.simTime);
+        }
+        drawCandles(ctx, ch.candles, renderCamX, this.simTime);
+        drawInteractables(
+          ctx,
+          ch.interactables,
+          ch.hiddenPassage ? [ch.hiddenPassage] : [],
+          renderCamX,
+          this.simTime,
+        );
+      }
+
+      // Multiplayer peers in dungeon
+      for (const peer of this.peers.values()) {
+        drawPeer(ctx, peer, renderCamX, this.simTime);
+      }
+
+      // Enemies & JoJo Bosses
+      for (const ch of chunks) {
+        for (const en of ch.enemies) {
+          drawEnemy(ctx, en, renderCamX, this.simTime, frozen);
+        }
+        if (ch.boss && (!ch.boss.defeated || ch.boss.state === 'ko')) {
+          drawJoJoBoss(ctx, ch.boss, renderCamX, this.simTime, frozen);
+        }
       }
     }
 
-    // Ambient floating candle embers / forest fireflies / volcano sparks
-    const moteColor =
-      biome === 'castle' ? '#fbbf24' : biome === 'forest' ? '#6ee7b7' : '#fb923c';
+    // Ambient floating candle embers / forest fireflies / sunlit motes
+    const moteColor = isIsekai
+      ? this.realm === 'demon_realm' || this.realm === 'demon_king_arena'
+        ? '#c084fc'
+        : '#fef08a'
+      : biome === 'castle'
+        ? '#fbbf24'
+        : biome === 'forest'
+          ? '#6ee7b7'
+          : '#fb923c';
     for (const m of this.ambientMotes) {
       const alpha = 0.28 + 0.35 * Math.abs(Math.sin(this.simTime * 2.5 + m.phase));
       ctx.globalAlpha = alpha;
@@ -2441,7 +3633,7 @@ export class BasteraGameEngine {
 
     drawProjectiles(ctx, this.projectiles, renderCamX);
 
-    if (renderCamX < 40) {
+    if (!isIsekai && renderCamX < 40) {
       drawDarkSanctumLighting(ctx, renderCamX, this.player.x, this.player.y, this.simTime);
     }
 
@@ -2490,31 +3682,33 @@ export class BasteraGameEngine {
       ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
     }
 
-    // Subtle candle-lit perimeter vignette (cached offscreen)
-    if (!this.vignetteCanvas) {
-      const vc = document.createElement('canvas');
-      vc.width = PIXEL_W;
-      vc.height = PIXEL_H;
-      const vctx = vc.getContext('2d');
-      if (vctx) {
-        const vig = vctx.createRadialGradient(
-          PIXEL_W * 0.5,
-          PIXEL_H * 0.5,
-          PIXEL_W * 0.28,
-          PIXEL_W * 0.5,
-          PIXEL_H * 0.5,
-          PIXEL_W * 0.68,
-        );
-        vig.addColorStop(0, 'rgba(0,0,0,0)');
-        vig.addColorStop(1, 'rgba(6,4,6,0.52)');
-        vctx.fillStyle = vig;
-        vctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
+    // Subtle candle-lit perimeter vignette only inside Citadel / Demon Dungeons (keep sunny Isekai town crisp & bright!)
+    if (!isIsekai || this.realm === 'goblin_dungeon' || this.realm === 'demon_realm' || this.realm === 'demon_king_arena') {
+      if (!this.vignetteCanvas) {
+        const vc = document.createElement('canvas');
+        vc.width = PIXEL_W;
+        vc.height = PIXEL_H;
+        const vctx = vc.getContext('2d');
+        if (vctx) {
+          const vig = vctx.createRadialGradient(
+            PIXEL_W * 0.5,
+            PIXEL_H * 0.5,
+            PIXEL_W * 0.28,
+            PIXEL_W * 0.5,
+            PIXEL_H * 0.5,
+            PIXEL_W * 0.68,
+          );
+          vig.addColorStop(0, 'rgba(0,0,0,0)');
+          vig.addColorStop(1, 'rgba(6,4,6,0.52)');
+          vctx.fillStyle = vig;
+          vctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
+        }
+        this.vignetteCanvas = vc;
       }
-      this.vignetteCanvas = vc;
+      ctx.drawImage(this.vignetteCanvas, 0, 0);
     }
-    ctx.drawImage(this.vignetteCanvas, 0, 0);
 
-    // Mega Boss Glitch-Crash & Intro Cutscene Layer
+    // Mega Boss / Gyro Zeppeli Glitch-Crash & Intro Cutscene Layer
     if (this.megaCutscene && this.status === 'playing') {
       const mc = this.megaCutscene;
       const elapsed = mc.duration - mc.timer;
@@ -2536,6 +3730,31 @@ export class BasteraGameEngine {
   }
 
   private getNearbyInteractableLabel(): string | null {
+    if (this.realm !== 'citadel') {
+      for (const prop of this.isekaiInteractables) {
+        if (
+          rectsOverlap(
+            this.player.x - 14,
+            this.player.y - 8,
+            this.player.w + 28,
+            this.player.h + 16,
+            prop.x,
+            prop.y,
+            prop.w,
+            prop.h,
+          )
+        ) {
+          return `[F] ${prop.label}`;
+        }
+      }
+      for (const npc of this.isekaiNpcs) {
+        if (Math.abs(this.player.x - npc.x) < 34) {
+          return `[F] Talk to ${npc.name}`;
+        }
+      }
+      return null;
+    }
+
     const chunks = this.getActiveChunks();
     for (const ch of chunks) {
       for (const prop of ch.interactables) {
@@ -2559,17 +3778,83 @@ export class BasteraGameEngine {
     return null;
   }
 
+  private buildIsekaiMissionHud(): IsekaiMissionHud | null {
+    if (!this.activeMissionId) return null;
+    const m = GUILD_MISSIONS.find((x) => x.id === this.activeMissionId);
+    if (!m) return null;
+    let objectiveText = m.summary;
+    if (this.realm === 'goblin_dungeon') {
+      objectiveText = `Clear Goblins & Hobgoblins (${this.isekaiEnemies.length} remaining)`;
+    } else if (this.realm === 'carriage_escort' && this.carriageEscort) {
+      objectiveText = `Escort Princess Carriage (${this.carriageEscort.progress}%) · ${this.isekaiEnemies.length} Bandits`;
+    } else if (this.realm === 'demon_realm') {
+      objectiveText = `Clear Demon Realm Vanguard (${this.isekaiEnemies.length} demons left)`;
+    } else if (this.realm === 'demon_king_arena') {
+      const aliveKings = this.demonKings.filter((k) => !k.defeated && k.hp > 0).length;
+      objectiveText = `Slay the 3 Demon Kings (${aliveKings} Kings remaining)`;
+    }
+    return {
+      missionId: m.id,
+      title: m.title,
+      rank: m.rankReq,
+      objectiveText,
+      killsDone: this.isekaiKillsDone,
+      killsRequired: Math.max(1, this.isekaiKillsRequired),
+      carriageHp: this.carriageEscort ? Math.round(this.carriageEscort.hp) : undefined,
+      carriageMaxHp: this.carriageEscort ? this.carriageEscort.maxHp : undefined,
+      carriageProgress: this.carriageEscort ? this.carriageEscort.progress : undefined,
+      demonKings:
+        this.realm === 'demon_king_arena'
+          ? this.demonKings.map((k) => ({
+              id: k.id,
+              name: k.name,
+              hp: Math.round(k.hp),
+              maxHp: k.maxHp,
+              defeated: k.defeated,
+              windVulnerable: Boolean(k.windVulnerable),
+              stunned: (k.stunTimer ?? 0) > 0,
+            }))
+          : undefined,
+      activeCastBanner: this.activeCastBanner,
+      completed: false,
+    };
+  }
+
   private emitHud(force = false): void {
     const biome = this.getCurrentBiome();
-    const nearbyBoss = this.getActiveNearbyBoss();
+    const nearbyBoss = this.realm === 'citadel' ? this.getActiveNearbyBoss() : null;
     const nearbyPrompt = this.getNearbyInteractableLabel();
-    const custSig = `${this.player.customization.cloakColor},${this.player.customization.armorColor},${this.player.customization.visorColor},${this.player.customization.plumeColor}`;
+    const custSig = `${this.player.customization.cloakColor},${this.player.customization.armorColor},${this.player.customization.visorColor},${this.player.customization.plumeColor},${this.player.customization.outfitStyle ?? ''},${this.player.customization.headgearStyle ?? ''},${this.player.customization.crownEquipped ? '1' : '0'}`;
     const secCapSig = this.secretCaption ? `${this.secretCaption.title}:${this.secretCaption.detail}` : 'none';
     const megaCutSig = this.megaCutscene
       ? `${this.megaCutscene.archetype}:${this.megaCutscene.timer.toFixed(1)}`
       : 'none';
+    const corSig = this.coronationCutscene ? this.coronationCutscene.timer.toFixed(1) : 'none';
+    const missionHud = this.buildIsekaiMissionHud();
+    const missionSig = missionHud
+      ? `${missionHud.missionId}:${missionHud.killsDone}:${missionHud.carriageProgress ?? 0}:${missionHud.carriageHp ?? 0}:${missionHud.activeCastBanner ?? ''}:${missionHud.demonKings?.map((k) => `${k.hp}:${k.windVulnerable ? 1 : 0}:${k.stunned ? 1 : 0}`).join(',') ?? ''}`
+      : 'none';
+    const orbSig = this.inventory
+      .filter((it) => it.category === 'orb')
+      .map((it) => `${it.id}:${it.count}`)
+      .join(',');
+    const idleLeft = Math.max(0, Math.ceil(ISEKAI_IDLE_TRANSPORT_SECONDS - this.player.idleTimer));
+
     const sig = [
       this.status,
+      this.realm,
+      this.guildRank,
+      orbSig,
+      this.unlockedWardrobe.join(','),
+      this.crownUnlocked ? '1' : '0',
+      this.gyroDefeated ? '1' : '0',
+      this.isekaiPortalOpen ? '1' : '0',
+      idleLeft,
+      missionSig,
+      corSig,
+      this.onlineAdventurers.length,
+      this.pendingGuildInvites.length,
+      this.guildBulletin.rankings.map((r) => `${r.name}:${r.rank}`).join(','),
       Math.round(this.player.hp),
       Math.round(this.player.maxHp),
       Math.round(this.player.stamina),
@@ -2632,6 +3917,37 @@ export class BasteraGameEngine {
       };
     }
 
+    let coronationHud: CoronationCutsceneHud | null = null;
+    if (this.coronationCutscene) {
+      const prog = Math.max(
+        0,
+        Math.min(1, (this.coronationCutscene.duration - this.coronationCutscene.timer) / this.coronationCutscene.duration),
+      );
+      const phase: CoronationCutsceneHud['phase'] =
+        prog < 0.35 ? 'approach' : prog < 0.72 ? 'crowning' : 'cheering';
+      coronationHud = {
+        phase,
+        progress: prog,
+        subtitle:
+          phase === 'approach'
+            ? 'All 3 Demon Kings have fallen!'
+            : phase === 'crowning'
+              ? 'The Golden Sovereign Crown descends!'
+              : 'All of Solaris Town celebrates your Royal S-Rank Coronation!',
+      };
+    }
+
+    const realmLabelMap: Record<RealmMode, string> = {
+      citadel: getBiomeDisplayName(biome),
+      isekai_town: 'Solaris Isekai Town',
+      isekai_guild: 'Solaris Adventure Guild',
+      isekai_wardrobe: 'Royal Boutique & Wardrobe',
+      goblin_dungeon: 'Rocky Goblin Cavern',
+      carriage_escort: 'Kingdom Highway Escort',
+      demon_realm: 'Demon Realm Volcano Caldera',
+      demon_king_arena: 'Three Demon Kings Citadel',
+    };
+
     const snapshot: HudSnapshot = {
       status: this.status,
       hp: Math.round(this.player.hp),
@@ -2645,7 +3961,7 @@ export class BasteraGameEngine {
       monstersSlain: this.player.monstersSlain,
       customization: { ...this.player.customization },
       biome,
-      biomeLabel: getBiomeDisplayName(biome),
+      biomeLabel: realmLabelMap[this.realm],
       distanceMeters: Math.round((this.player.x - 68) / 16),
       bossesDefeated: this.player.bossesDefeated,
       totalBosses: TOTAL_BOSSES,
@@ -2659,6 +3975,18 @@ export class BasteraGameEngine {
       starPlatinumActive: this.starPlatinumTimer > 0,
       bossCooldownSeconds: Math.ceil(this.bossCooldownSeconds),
       bossFoughtStreak: this.bossesFoughtStreak,
+      idleSecondsToIsekai: idleLeft,
+      realm: this.realm,
+      guildRank: this.guildRank,
+      unlockedWardrobe: [...this.unlockedWardrobe],
+      crownUnlocked: this.crownUnlocked,
+      gyroDefeated: this.gyroDefeated,
+      isekaiPortalOpen: this.isekaiPortalOpen,
+      isekaiMission: missionHud,
+      coronationCutscene: coronationHud,
+      onlineAdventurers: [...this.onlineAdventurers],
+      pendingGuildInvites: [...this.pendingGuildInvites],
+      guildBulletin: this.guildBulletin,
       inventory: this.inventory.map((i) => ({ ...i })),
       dialogue: this.dialogue ? { ...this.dialogue } : null,
       activeBoss: nearbyBoss
@@ -2716,6 +4044,10 @@ export class BasteraGameEngine {
               if (p.id !== this.selfPeerId) this.peers.set(p.id, p);
             }
             if (Array.isArray(msg.worlds)) this.onlineWorlds = msg.worlds;
+            if (Array.isArray(msg.adventurers)) {
+              this.onlineAdventurers = msg.adventurers.filter((a: OnlineAdventurer) => a.id !== this.selfPeerId);
+            }
+            if (msg.bulletin) this.guildBulletin = msg.bulletin;
             this.onlineCount = msg.stats?.onlineCount ?? 1;
             this.worldPlayerCount = msg.stats?.worldPlayerCount ?? this.peers.size + 1;
             this.emitHud(true);
@@ -2745,8 +4077,26 @@ export class BasteraGameEngine {
             this.emitHud(true);
           } else if (msg.type === 'worlds:list') {
             if (Array.isArray(msg.worlds)) this.onlineWorlds = msg.worlds;
+            if (Array.isArray(msg.adventurers)) {
+              this.onlineAdventurers = msg.adventurers.filter((a: OnlineAdventurer) => a.id !== this.selfPeerId);
+            }
+            if (msg.bulletin) this.guildBulletin = msg.bulletin;
             if (Number.isFinite(msg.onlineCount)) this.onlineCount = msg.onlineCount;
             this.emitHud();
+          } else if (msg.type === 'guild:bulletin' && msg.bulletin) {
+            this.guildBulletin = msg.bulletin;
+            this.emitHud();
+          } else if (msg.type === 'guild:invite_received' && msg.invite) {
+            this.pendingGuildInvites = [
+              ...this.pendingGuildInvites.filter((i) => i.inviteId !== msg.invite.inviteId),
+              msg.invite,
+            ];
+            this.showAnnouncement(
+              `Guild Invite from ${msg.invite.fromName}: ${msg.invite.missionTitle}!`,
+            );
+            this.emitHud(true);
+          } else if (msg.type === 'guild:party_start' && msg.missionId) {
+            this.startGuildMission(msg.missionId, false);
           } else if (msg.type === 'world:boss_state' && this.worldRole === 'guest') {
             this.hostDefeatedBosses = new Set(Array.isArray(msg.defeatedBosses) ? msg.defeatedBosses : []);
             this.chunks.clear();
@@ -2811,6 +4161,8 @@ export class BasteraGameEngine {
         weaponId: this.player.equippedWeapon,
         biome: this.getCurrentBiome(),
         bossesDefeated: this.player.bossesDefeated,
+        realm: this.realm,
+        guildRank: this.guildRank,
         customization: this.player.customization,
       }),
     );
@@ -2827,7 +4179,14 @@ export class BasteraGameEngine {
         e.preventDefault();
       }
     }
-    if (this.status !== 'playing' || this.modalPaused || this.bossBattle || this.megaCutscene || this.volcanoBridgeFallTimer > 0) {
+    if (
+      this.status !== 'playing' ||
+      this.modalPaused ||
+      this.bossBattle ||
+      this.megaCutscene ||
+      this.coronationCutscene ||
+      this.volcanoBridgeFallTimer > 0
+    ) {
       return;
     }
     if (this.postBossInputLockTimer > 0 && ['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD'].includes(e.code)) {

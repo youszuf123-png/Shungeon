@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { getBossDef } from '../game/data';
+import { createGyroZeppeliBossDef, getBossDef } from '../game/data';
 import { createMegaBossDef } from '../game/megaBoss';
 import {
   AnimeExpression,
@@ -14,6 +14,7 @@ import type { MegaBossArchetype, SkillId, WarriorCustomization, WeaponId } from 
 interface BossPortraitProps {
   bossIndex: number;
   megaArchetype?: MegaBossArchetype;
+  isGyroBoss?: boolean;
   expression: AnimeExpression;
   size?: number;
   className?: string;
@@ -22,6 +23,7 @@ interface BossPortraitProps {
 export const PixelBossPortrait: React.FC<BossPortraitProps> = ({
   bossIndex,
   megaArchetype,
+  isGyroBoss,
   expression,
   size = 56,
   className = '',
@@ -34,11 +36,14 @@ export const PixelBossPortrait: React.FC<BossPortraitProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, 48, 48);
-    const def = megaArchetype
-      ? createMegaBossDef(megaArchetype, Math.max(1, bossIndex % 100), 'castle')
-      : getBossDef(bossIndex);
+    const def =
+      isGyroBoss || bossIndex === 101
+        ? createGyroZeppeliBossDef(115, 28)
+        : megaArchetype
+          ? createMegaBossDef(megaArchetype, Math.max(1, bossIndex % 100), 'castle')
+          : getBossDef(bossIndex);
     drawBossPortrait(ctx, def, expression, 48);
-  }, [bossIndex, megaArchetype, expression]);
+  }, [bossIndex, megaArchetype, isGyroBoss, expression]);
 
   return (
     <canvas
@@ -80,6 +85,9 @@ export const PixelWarriorPortrait: React.FC<WarriorPortraitProps> = ({
     customization?.armorColor,
     customization?.visorColor,
     customization?.plumeColor,
+    customization?.outfitStyle,
+    customization?.headgearStyle,
+    customization?.crownEquipped,
   ]);
 
   return (

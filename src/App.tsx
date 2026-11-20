@@ -2,15 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BossBattleOverlay } from './components/BossBattleOverlay';
 import { CheckpointMapModal } from './components/CheckpointMapModal';
 import { GameHud } from './components/GameHud';
+import { GuildBulletinOverlay } from './components/GuildBulletinOverlay';
+import { GuildInviteToast } from './components/GuildInviteToast';
+import { GuildModal } from './components/GuildModal';
 import { InventoryModal } from './components/InventoryModal';
 import { SanctuaryModal } from './components/SanctuaryModal';
 import { SaveLoadModal } from './components/SaveLoadModal';
 import { SoloLevelingStatusModal } from './components/SoloLevelingStatusModal';
 import { StatusModals } from './components/StatusModals';
 import { TitleScreen } from './components/TitleScreen';
+import { WardrobeModal } from './components/WardrobeModal';
 import { WorldsModal } from './components/WorldsModal';
 import { TOTAL_BOSSES, TOTAL_HIDDEN_PASSAGES } from './game/data';
 import { BasteraGameEngine } from './game/engine';
+import { ISEKAI_IDLE_TRANSPORT_SECONDS, createDefaultGuildBulletin } from './game/isekai';
 import {
   DEFAULT_WARRIOR_CUSTOMIZATION,
   createInitialInventory,
@@ -58,6 +63,18 @@ const INITIAL_HUD: HudSnapshot = {
   starPlatinumActive: false,
   bossCooldownSeconds: 0,
   bossFoughtStreak: 0,
+  idleSecondsToIsekai: ISEKAI_IDLE_TRANSPORT_SECONDS,
+  realm: 'citadel',
+  guildRank: 'F',
+  unlockedWardrobe: ['outfit_knight_plate', 'hat_helm'],
+  crownUnlocked: false,
+  gyroDefeated: false,
+  isekaiPortalOpen: false,
+  isekaiMission: null,
+  coronationCutscene: null,
+  onlineAdventurers: [],
+  pendingGuildInvites: [],
+  guildBulletin: createDefaultGuildBulletin(),
   inventory: createInitialInventory(),
   dialogue: null,
   activeBoss: null,
@@ -104,6 +121,9 @@ export default function App() {
   const [showSanctuary, setShowSanctuary] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showWorldsModal, setShowWorldsModal] = useState(false);
+  const [showGuildModal, setShowGuildModal] = useState(false);
+  const [showWardrobeModal, setShowWardrobeModal] = useState(false);
+  const [bulletinCollapsed, setBulletinCollapsed] = useState(false);
   const [saves, setSaves] = useState<BasteraSaveSummary[]>(() => listLocalSaves());
   const [savesLoading, setSavesLoading] = useState(false);
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
@@ -116,6 +136,8 @@ export default function App() {
     setShowSanctuary(false);
     setShowSaveModal(false);
     setShowWorldsModal(false);
+    setShowGuildModal(false);
+    setShowWardrobeModal(false);
   }, []);
 
   const refreshSaves = useCallback(async () => {
@@ -169,6 +191,16 @@ export default function App() {
     );
 
     engineRef.current = engine;
+    engine.setUiCallbacks({
+      onOpenGuild: () => {
+        closeAllModals();
+        setShowGuildModal(true);
+      },
+      onOpenWardrobe: () => {
+        closeAllModals();
+        setShowWardrobeModal(true);
+      },
+    });
     if (autostart) {
       engine.startNewGame();
     }
@@ -178,7 +210,7 @@ export default function App() {
       engine.destroy();
       engineRef.current = null;
     };
-  }, []);
+  }, [closeAllModals]);
 
   const handleStartGame = useCallback(
     (name?: string) => {
@@ -205,18 +237,17 @@ export default function App() {
     async (saveId: string) => {
       const eng = engineRef.current;
       if (!eng) return;
-      let loaded: BasteraSaveData | null = null;
-      try {
-        const resp = await fetch(`/api/saves/${encodeURIComponent(saveId)}`);
-        if (resp.ok) {
-          const data = (await resp.json()) as { save?: unknown };
-          loaded = normalizeLoadedSave(data.save);
-        }
-      } catch {
-        // Fallback to localStorage below
-      }
+      let loaded: BasteraSaveData | null = loadLocalSave(saveId);
       if (!loaded) {
-        loaded = loadLocalSave(saveId);
+        try {
+          const resp = await fetch(`/api/saves/${encodeURIComponent(saveId)}`);
+          if (resp.ok) {
+            const data = (await resp.json()) as { save?: unknown };
+            loaded = normalizeLoadedSave(data.save);
+          }
+        } catch {
+          // Offline fallback handled cleanly
+        }
       }
       if (loaded && eng.loadFromSave(loaded)) {
         closeAllModals();
@@ -299,6 +330,14 @@ export default function App() {
           setShowStatus(false);
           return;
         }
+        if (showGuildModal) {
+          setShowGuildModal(false);
+          return;
+        }
+        if (showWardrobeModal) {
+          setShowWardrobeModal(false);
+          return;
+        }
         if (hud.status === 'playing') {
           engineRef.current?.setStatus('paused');
         } else if (hud.status === 'paused') {
@@ -332,15 +371,33 @@ export default function App() {
     showSanctuary,
     showSaveModal,
     showWorldsModal,
+    showGuildModal,
+    showWardrobeModal,
     handleStartGame,
     closeAllModals,
   ]);
 
   useEffect(() => {
     engineRef.current?.setModalPaused(
-      showInventory || showMap || showStatus || showSanctuary || showSaveModal || showWorldsModal,
+      showInventory ||
+        showMap ||
+        showStatus ||
+        showSanctuary ||
+        showSaveModal ||
+        showWorldsModal ||
+        showGuildModal ||
+        showWardrobeModal,
     );
-  }, [showInventory, showMap, showStatus, showSanctuary, showSaveModal, showWorldsModal]);
+  }, [
+    showInventory,
+    showMap,
+    showStatus,
+    showSanctuary,
+    showSaveModal,
+    showWorldsModal,
+    showGuildModal,
+    showWardrobeModal,
+  ]);
 
   const handleCycleWeapon = useCallback(() => {
     const unlocked = hud.unlockedWeapons;
@@ -388,6 +445,7 @@ export default function App() {
           onAttackWeapon={() => engineRef.current?.battleAttackWeapon()}
           onUseSkill={(slot) => engineRef.current?.battleUseSkill(slot)}
           onUsePotion={(itemId) => engineRef.current?.battleUsePotion(itemId)}
+          onUseOrb={(orbId) => engineRef.current?.battleUseOrb(orbId)}
           onRetreat={() =>
             engineRef.current?.battleRetreatToSanctuary(() => {
               closeAllModals();
@@ -426,15 +484,47 @@ export default function App() {
           }}
           onOpenSaves={openSaveModal}
           onOpenWorlds={openWorldsModal}
+          onOpenGuild={() => {
+            closeAllModals();
+            setShowGuildModal(true);
+          }}
+          onOpenWardrobe={() => {
+            closeAllModals();
+            setShowWardrobeModal(true);
+          }}
+          onEnterRoom={(room) => engineRef.current?.enterIsekaiRoom(room, 96)}
+          onReturnToCitadel={() => engineRef.current?.returnToCitadel()}
+          onToggleBulletin={() => setBulletinCollapsed((v) => !v)}
           onAllocateStat={(key: StatKey) => engineRef.current?.allocatePlayerStat(key, 1)}
           onTogglePause={() => engineRef.current?.setStatus('paused')}
           onToggleMute={() => engineRef.current?.toggleMute()}
           onToggleRotate={() => setRotatedPerspective((v) => !v)}
           onTriggerSkill={(slot) => engineRef.current?.triggerSkillButton(slot)}
+          onUseOrb={(orbId) => engineRef.current?.battleUseOrb(orbId)}
           onDash={() => engineRef.current?.performDash()}
           onCycleWeapon={handleCycleWeapon}
           onAdvanceDialogue={() => engineRef.current?.advanceDialogue()}
           onVirtualKey={(action, pressed) => engineRef.current?.triggerVirtualKey(action, pressed)}
+        />
+      )}
+
+      {/* Animated Live Guild Bulletin inside Solaris Adventure Guild */}
+      {hud.status === 'playing' && hud.realm === 'isekai_guild' && !hud.bossBattle && (
+        <div className="fixed right-3 sm:right-5 top-20 z-20 pointer-events-none">
+          <GuildBulletinOverlay
+            bulletin={hud.guildBulletin}
+            playerRank={hud.guildRank}
+            collapsed={bulletinCollapsed}
+            onToggleCollapse={() => setBulletinCollapsed((v) => !v)}
+          />
+        </div>
+      )}
+
+      {/* Incoming Co-op Adventure Guild Invites */}
+      {hud.status === 'playing' && (
+        <GuildInviteToast
+          invites={hud.pendingGuildInvites}
+          onRespond={(id, accept) => engineRef.current?.respondToGuildInvite(id, accept)}
         />
       )}
 
@@ -524,6 +614,30 @@ export default function App() {
           onLeaveWorld={() => engineRef.current?.leaveJoinedWorld()}
           onTogglePublic={(isPublic) => engineRef.current?.setWorldPublic(isPublic)}
           onRefreshWorlds={() => engineRef.current?.refreshOnlineWorlds()}
+        />
+      )}
+
+      {/* Solaris Adventure Guild Reception Modal */}
+      {showGuildModal && hud.status === 'playing' && (
+        <GuildModal
+          hud={hud}
+          onClose={() => setShowGuildModal(false)}
+          onStartMission={(missionId, broadcastToParty) =>
+            engineRef.current?.startGuildMission(missionId, broadcastToParty)
+          }
+          onInviteAdventurer={(targetPeerId, missionId) =>
+            engineRef.current?.sendGuildInvite(targetPeerId, missionId)
+          }
+          onReturnToCitadel={() => engineRef.current?.returnToCitadel()}
+        />
+      )}
+
+      {/* Solaris Wardrobe Shop Modal */}
+      {showWardrobeModal && hud.status === 'playing' && (
+        <WardrobeModal
+          hud={hud}
+          onClose={() => setShowWardrobeModal(false)}
+          onBuyOrEquip={(itemId) => engineRef.current?.buyOrEquipWardrobeItemById(itemId)}
         />
       )}
 

@@ -1,0 +1,73 @@
+### Page
+- Page URL: http://localhost:3000/
+- Page Title: Bastera: Endless Citadel
+### Snapshot
+```yaml
+- main [ref=f1e3]:
+  - generic:
+    - generic:
+      - generic:
+        - generic "Boss portrait showing smirk expression"
+        - generic:
+          - generic:
+            - generic: Viceroy Dio Brando
+            - generic: Lv.1
+          - generic: "Aura: Golden Phantom"
+          - generic:
+            - generic: Blood Moon Ashfall · Ch.1
+            - generic: Chrono Knife Barrage
+          - generic: HP
+          - generic: 115/115
+      - generic [ref=f1e24]:
+        - button "STATUS" [ref=f1e25] [cursor=pointer]
+        - button "Mute Audio" [ref=f1e26] [cursor=pointer]: 🔊
+        - button "Pause Game" [ref=f1e27] [cursor=pointer]: ❚❚
+    - generic:
+      - generic:
+        - generic:
+          - generic "Warrior portrait"
+          - generic:
+            - generic:
+              - generic: Bastera Knight
+              - generic: Vanguard Style
+            - generic: HP
+            - generic: ST
+            - generic: HP 131/160 · ST 100
+      - generic [ref=f1e28]:
+        - generic [ref=f1e29]:
+          - generic [ref=f1e30]: ✦ ELEMENTAL ORB BAR
+          - generic [ref=f1e31]: (8% Monster Drop)
+        - generic [ref=f1e32]:
+          - button "orb_flame icon Flame Orb 25% MAX HP x2" [ref=f1e33] [cursor=pointer]:
+            - generic [ref=f1e34]:
+              - generic "orb_flame icon" [ref=f1e35]
+              - generic [ref=f1e36]:
+                - generic [ref=f1e37]: Flame Orb
+                - generic [ref=f1e38]: 25% MAX HP
+            - generic [ref=f1e39]: x2
+          - button "orb_wind icon Wind Orb +30% DMG x2" [ref=f1e40] [cursor=pointer]:
+            - generic [ref=f1e41]:
+              - generic "orb_wind icon" [ref=f1e42]
+              - generic [ref=f1e43]:
+                - generic [ref=f1e44]: Wind Orb
+                - generic [ref=f1e45]: +30% DMG
+            - generic [ref=f1e46]: x2
+          - button "orb_electric icon Electric Orb STUN 1T x2" [ref=f1e47] [cursor=pointer]:
+            - generic [ref=f1e48]:
+              - generic "orb_electric icon" [ref=f1e49]
+              - generic [ref=f1e50]:
+                - generic [ref=f1e51]: Electric Orb
+                - generic [ref=f1e52]: STUN 1T
+            - generic [ref=f1e53]: x2
+      - generic [ref=f1e54]:
+        - generic [ref=f1e55]:
+          - generic [ref=f1e56]:
+            - generic [ref=f1e57]: "* Battle"
+            - generic [ref=f1e58]: YOUR TURN
+          - paragraph [ref=f1e59]: "* What will Bastera Knight do against Viceroy Dio Brando?"
+        - generic [ref=f1e61]:
+          - button "▶ FIGHT" [ref=f1e62] [cursor=pointer]
+          - button "▶ POTIONS" [ref=f1e63] [cursor=pointer]
+          - button "▶ RETREAT" [ref=f1e64] [cursor=pointer]
+          - button "▶ ESCAPE" [ref=f1e65] [cursor=pointer]
+```

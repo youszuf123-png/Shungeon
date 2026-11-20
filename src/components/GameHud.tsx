@@ -1,8 +1,9 @@
 import React from 'react';
 import { SKILLS, WEAPONS } from '../game/data';
-import type { HudSnapshot, SkillId, StatKey } from '../game/types';
+import type { HudSnapshot, OrbId, SkillId, StatKey } from '../game/types';
 import {
   PixelBossPortrait,
+  PixelItemIcon,
   PixelWarriorPortrait,
   PixelWeaponIcon,
 } from './PixelPortrait';
@@ -16,11 +17,17 @@ interface GameHudProps {
   onOpenStatus: () => void;
   onOpenSaves: () => void;
   onOpenWorlds: () => void;
+  onOpenGuild: () => void;
+  onOpenWardrobe: () => void;
+  onEnterRoom: (room: 'isekai_town' | 'isekai_guild' | 'isekai_wardrobe') => void;
+  onReturnToCitadel: () => void;
+  onToggleBulletin: () => void;
   onAllocateStat: (statKey: StatKey) => void;
   onTogglePause: () => void;
   onToggleMute: () => void;
   onToggleRotate: () => void;
   onTriggerSkill: (slot: 0 | 1 | 2) => void;
+  onUseOrb: (orbId: OrbId) => void;
   onDash: () => void;
   onCycleWeapon: () => void;
   onAdvanceDialogue: () => void;
@@ -39,11 +46,17 @@ export const GameHud: React.FC<GameHudProps> = ({
   onOpenStatus,
   onOpenSaves,
   onOpenWorlds,
+  onOpenGuild,
+  onOpenWardrobe,
+  onEnterRoom,
+  onReturnToCitadel,
+  onToggleBulletin,
   onAllocateStat,
   onTogglePause,
   onToggleMute,
   onToggleRotate,
   onTriggerSkill,
+  onUseOrb,
   onDash,
   onCycleWeapon,
   onAdvanceDialogue,
@@ -91,9 +104,25 @@ export const GameHud: React.FC<GameHudProps> = ({
             <div className="flex items-center gap-2 text-[10px] font-pixel-mono text-amber-100/80 whitespace-nowrap">
               <span>{hud.biomeLabel}</span>
               <span aria-hidden="true">·</span>
-              <span>Boss {hud.bossesDefeated}/{hud.totalBosses}</span>
-              <span aria-hidden="true">·</span>
-              <span>Secrets {hud.secretsFound}/{hud.totalSecrets}</span>
+              {hud.realm === 'citadel' ? (
+                <>
+                  <span>Boss {hud.bossesDefeated}/{hud.totalBosses}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>Secrets {hud.secretsFound}/{hud.totalSecrets}</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-yellow-300 font-bold">
+                    {hud.guildRank}-Rank{hud.crownUnlocked ? ' ♛ Royalty' : ''}
+                  </span>
+                  {hud.isekaiPortalOpen && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-sky-300">Isekai Gate Open</span>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -149,10 +178,217 @@ export const GameHud: React.FC<GameHudProps> = ({
               STATUS [K]
             </button>
           </div>
+
+          {/* Isekai Hub Quick-Action Strip when exploring Solaris Town / Guild / Wardrobe */}
+          {(hud.realm === 'isekai_town' || hud.realm === 'isekai_guild' || hud.realm === 'isekai_wardrobe') && (
+            <div className="pointer-events-auto flex items-center flex-wrap gap-1">
+              {hud.realm !== 'isekai_town' && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onEnterRoom('isekai_town');
+                  }}
+                  className="px-2 py-1 bg-[#1e3a8a]/90 hover:bg-[#1d4ed8] border border-sky-300 font-pixel-mono text-[9px] font-bold text-sky-50 cursor-pointer"
+                >
+                  TOWN PLAZA
+                </button>
+              )}
+              {hud.realm !== 'isekai_guild' ? (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-enter-guild-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onEnterRoom('isekai_guild');
+                  }}
+                  className="px-2 py-1 bg-[#7c2d12]/90 hover:bg-[#9a3412] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+                >
+                  ENTER GUILD
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-open-guild-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onOpenGuild();
+                    }}
+                    className="px-2 py-1 bg-[#7c2d12]/95 hover:bg-[#9a3412] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+                  >
+                    RECEPTION QUESTS
+                  </button>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onToggleBulletin();
+                    }}
+                    className="px-2 py-1 bg-[#29170a]/95 hover:bg-[#3f2310] border border-amber-400/75 font-pixel-mono text-[9px] font-bold text-amber-200 cursor-pointer"
+                  >
+                    BULLETIN
+                  </button>
+                </>
+              )}
+              {hud.realm !== 'isekai_wardrobe' ? (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-enter-wardrobe-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onEnterRoom('isekai_wardrobe');
+                  }}
+                  className="px-2 py-1 bg-[#701a75]/90 hover:bg-[#86198f] border border-pink-300 font-pixel-mono text-[9px] font-bold text-pink-50 cursor-pointer"
+                >
+                  WARDROBE SHOP
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-open-wardrobe-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenWardrobe();
+                  }}
+                  className="px-2 py-1 bg-[#701a75]/95 hover:bg-[#86198f] border border-pink-300 font-pixel-mono text-[9px] font-bold text-pink-50 cursor-pointer"
+                >
+                  SHOP CATALOG
+                </button>
+              )}
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onReturnToCitadel();
+                }}
+                className="px-2 py-1 bg-[#1e1b4b]/90 hover:bg-[#312e81] border border-indigo-300/75 font-pixel-mono text-[9px] font-bold text-indigo-100 cursor-pointer"
+              >
+                CITADEL
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Top-Center: Co-op Guest Lock + 5-Boss Cooldown + Star Platinum + Mega Boss Cutscene + Secret Caption + Boss Bar */}
+        {/* Top-Center: Co-op Guest Lock + Idle Isekai Countdown + Active Isekai Mission + Mega Boss Cutscene + Secret Caption + Boss Bar */}
         <div className="flex flex-col items-center gap-1.5">
+          {hud.realm === 'citadel' && hud.idleSecondsToIsekai <= 95 && (
+            <div
+              data-testid="idle-isekai-timer"
+              className="bg-[#081b2e]/95 border border-sky-400/80 px-3 py-1 text-center"
+            >
+              <span className="font-pixel-mono text-[10px] text-sky-200">
+                ⏳ Dimensional Isekai Portal opens in <strong className="text-yellow-300">{hud.idleSecondsToIsekai}s</strong> of stillness
+              </span>
+            </div>
+          )}
+
+          {hud.isekaiMission && (
+            <div
+              data-testid="isekai-mission-hud"
+              className="bg-[#1b0e0a]/95 border-2 border-amber-400 px-3.5 py-2 min-w-[260px] max-w-[380px] shadow-[0_4px_16px_rgba(0,0,0,0.85)]"
+            >
+              <div className="flex items-center justify-between gap-2 text-[10px] font-pixel-mono">
+                <span className="text-amber-300 font-bold">
+                  [{hud.isekaiMission.rank}-RANK QUEST] {hud.isekaiMission.title}
+                </span>
+              </div>
+              <div className="font-pixel-mono text-[10px] text-amber-100 mt-0.5">
+                {hud.isekaiMission.objectiveText}
+              </div>
+
+              {typeof hud.isekaiMission.carriageHp === 'number' && (
+                <div className="mt-1.5">
+                  <div className="flex justify-between text-[9px] font-pixel-mono text-pink-200 mb-0.5">
+                    <span>Princess Carriage HP</span>
+                    <span>
+                      {hud.isekaiMission.carriageHp}/{hud.isekaiMission.carriageMaxHp} ({hud.isekaiMission.carriageProgress ?? 0}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-[#2a141b] border border-pink-400/50">
+                    <div
+                      className="h-full bg-emerald-500 transition-[width] duration-150"
+                      style={{
+                        width: `${Math.max(0, ((hud.isekaiMission.carriageHp ?? 0) / Math.max(1, hud.isekaiMission.carriageMaxHp ?? 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {hud.isekaiMission.demonKings && (
+                <div className="mt-1.5 space-y-1">
+                  {hud.isekaiMission.demonKings.map((dk) => (
+                    <div key={dk.id} className="text-[9px] font-pixel-mono">
+                      <div className="flex justify-between text-purple-200 gap-1">
+                        <span className={dk.defeated ? 'line-through opacity-55' : 'font-bold truncate'}>
+                          {dk.name}
+                          {dk.windVulnerable ? ' [+30%]' : ''}
+                          {dk.stunned ? ' [STUN]' : ''}
+                        </span>
+                        <span className="shrink-0">{dk.defeated ? 'SLAIN' : `${dk.hp}/${dk.maxHp}`}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-[#1e0b2e] border border-purple-500/40">
+                        <div
+                          className="h-full bg-purple-400 transition-[width] duration-150"
+                          style={{ width: `${Math.max(0, (dk.hp / Math.max(1, dk.maxHp)) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {/* Orb Bar for A-Rank Demon Kings Bossfight */}
+                  <div
+                    data-testid="boss-orb-bar"
+                    className="pointer-events-auto mt-1.5 pt-1.5 border-t border-amber-500/35 grid grid-cols-3 gap-1"
+                  >
+                    {(
+                      [
+                        { id: 'orb_flame', label: 'Flame', tag: '25%HP' },
+                        { id: 'orb_wind', label: 'Wind', tag: '+30%' },
+                        { id: 'orb_electric', label: 'Elec', tag: 'STUN' },
+                      ] as const
+                    ).map((o) => {
+                      const count = hud.inventory.find((it) => it.id === o.id)?.count ?? 0;
+                      return (
+                        <button
+                          key={o.id}
+                          type="button"
+                          tabIndex={-1}
+                          disabled={count <= 0}
+                          data-testid={`boss-orb-${o.id}`}
+                          onClick={(e) => {
+                            e.currentTarget.blur();
+                            onUseOrb(o.id);
+                          }}
+                          className="flex items-center justify-between gap-1 px-1.5 py-1 bg-[#140a16] border border-amber-400/60 disabled:opacity-45 hover:border-amber-200 cursor-pointer"
+                        >
+                          <PixelItemIcon itemId={o.id} size={16} />
+                          <div className="text-left leading-none">
+                            <div className="font-pixel-mono text-[8px] font-bold text-amber-100">{o.label}</div>
+                            <div className="font-pixel-mono text-[8px] text-amber-300">{o.tag} x{count}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {hud.isekaiMission.activeCastBanner && (
+                <div className="mt-1.5 px-2 py-0.5 bg-purple-950 border border-fuchsia-400 text-center font-pixel-mono text-[10px] font-bold text-fuchsia-200">
+                  🔥 {hud.isekaiMission.activeCastBanner}
+                </div>
+              )}
+            </div>
+          )}
+
           {hud.worldRole === 'guest' && (
             <div
               data-testid="coop-guest-badge"
@@ -192,14 +428,19 @@ export const GameHud: React.FC<GameHudProps> = ({
               className="flex items-center gap-3 bg-[#1a0514]/96 border-2 border-yellow-300 px-4 py-2 shadow-[0_6px_24px_rgba(244,63,94,0.65)] max-w-[420px]"
             >
               <PixelBossPortrait
-                bossIndex={901}
-                megaArchetype={hud.megaCutscene.archetype}
+                bossIndex={hud.megaCutscene.archetype === 'gyro_zeppeli' ? 101 : 901}
+                megaArchetype={
+                  hud.megaCutscene.archetype === 'gyro_zeppeli' ? undefined : hud.megaCutscene.archetype
+                }
+                isGyroBoss={hud.megaCutscene.archetype === 'gyro_zeppeli'}
                 expression="wryyy"
                 size={44}
               />
               <div className="min-w-0">
                 <div className="font-pixel-mono text-[10px] font-bold tracking-widest text-rose-300">
-                  ⚠ DIMENSIONAL GLITCH BREACH · MEGA BOSS
+                  {hud.megaCutscene.archetype === 'gyro_zeppeli'
+                    ? '✦ FINAL CITADEL BOSS · GYRO ZEPPELI'
+                    : '⚠ DIMENSIONAL GLITCH BREACH · MEGA BOSS'}
                 </div>
                 <div className="font-display text-sm font-bold text-yellow-200 truncate">
                   {hud.megaCutscene.name}

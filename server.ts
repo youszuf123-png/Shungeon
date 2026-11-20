@@ -11,6 +11,9 @@ interface WarriorCustomization {
   armorColor: string;
   visorColor: string;
   plumeColor: string;
+  outfitStyle?: string;
+  headgearStyle?: string;
+  crownEquipped?: boolean;
 }
 
 interface PeerState {
@@ -24,6 +27,8 @@ interface PeerState {
   anim: 'idle' | 'run' | 'jump' | 'attack' | 'skill';
   weaponId: string;
   biome: string;
+  realm: string;
+  guildRank: string;
   bossesDefeated: number;
   color: string;
   customization?: WarriorCustomization;
@@ -111,6 +116,85 @@ async function startServer() {
   const worlds = new Map<string, WorldRoom>();
   let totalGlobalBossesDefeated = 0;
   let totalGlobalSecretsFound = 0;
+
+  const guildRankWeight: Record<string, number> = {
+    F: 1,
+    E: 2,
+    D: 3,
+    C: 4,
+    B: 5,
+    A: 6,
+    S: 7,
+  };
+
+  const rankTitles: Record<string, string> = {
+    F: 'Porcelain Initiate',
+    E: 'Bronze Scout',
+    D: 'Iron Vanguard',
+    C: 'Silver Escort',
+    B: 'Mythril Slayer',
+    A: 'Crimson Champion',
+    S: 'Crowned Royal Sovereign',
+  };
+
+  const adventurerRecords = new Map<string, { name: string; rank: string; clears: number }>([
+    ['npc_frieren', { name: 'Alden of Axel', rank: 'S', clears: 88 }],
+    ['npc_rudeus', { name: 'Freya Silverwind', rank: 'A', clears: 42 }],
+    ['npc_megumin', { name: 'Megumin', rank: 'A', clears: 34 }],
+    ['npc_rem', { name: 'Kaito Blade', rank: 'B', clears: 27 }],
+    ['npc_kazuma', { name: 'Kazuma', rank: 'B', clears: 19 }],
+  ]);
+
+  const popularMissionCounts: Record<
+    string,
+    { title: string; rankReq: string; activeParties: number; completions: number }
+  > = {
+    f_goblin_warren: { title: 'Goblin Warren Clearing', rankReq: 'F', activeParties: 14, completions: 289 },
+    e_hobgoblin_caves: { title: 'Hobgoblin Quarry Purge', rankReq: 'E', activeParties: 8, completions: 174 },
+    d_deep_goblin_keep: { title: 'Deep Rocky Goblin Stronghold', rankReq: 'D', activeParties: 5, completions: 112 },
+    c_princess_carriage: { title: 'Royal Princess Carriage Escort', rankReq: 'C', activeParties: 9, completions: 142 },
+    b_demon_invasion: { title: 'Demon Realm Volcano Vanguard', rankReq: 'B', activeParties: 6, completions: 78 },
+    a_three_demon_kings: { title: 'Three Demon Kings Judgment', rankReq: 'A', activeParties: 2, completions: 19 },
+  };
+
+  const recentBulletinFeed: string[] = [
+    '[S] Alden of Axel cleared Crimson Volcano Realm Invasion in record time!',
+    '[A] Megumin triggered Explosion near Graystone Goblin Quarry.',
+    '[C] Royal Escort Guild requests guards for Princess Aurelia carriage!',
+  ];
+
+  const buildGuildBulletin = () => {
+    const rankings = Array.from(adventurerRecords.values())
+      .sort((a, b) => (guildRankWeight[b.rank] ?? 0) - (guildRankWeight[a.rank] ?? 0) || b.clears - a.clears)
+      .slice(0, 6)
+      .map((r) => ({
+        name: r.name,
+        rank: r.rank,
+        score: (guildRankWeight[r.rank] ?? 1) * 500 + r.clears * 25,
+        title: rankTitles[r.rank] ?? 'Guild Adventurer',
+      }));
+    const popularMissions = Object.entries(popularMissionCounts).map(([missionId, info]) => ({
+      missionId,
+      title: info.title,
+      rankReq: info.rankReq,
+      activeParties: info.activeParties,
+      completions: info.completions,
+    }));
+    return {
+      rankings,
+      popularMissions,
+      tickerText: recentBulletinFeed.slice(0, 3).join('  ✦  '),
+    };
+  };
+
+  const listOnlineAdventurers = () =>
+    Array.from(peers.values()).map((p) => ({
+      id: p.id,
+      name: p.name,
+      realm: p.realm,
+      guildRank: p.guildRank,
+      worldId: p.worldId,
+    }));
 
   const listPublicWorlds = () => {
     const list: {
@@ -233,6 +317,14 @@ async function startServer() {
       type: 'worlds:list',
       worlds: listPublicWorlds(),
       onlineCount: peers.size,
+      adventurers: listOnlineAdventurers(),
+    });
+  };
+
+  const broadcastGuildBulletin = () => {
+    broadcastAll({
+      type: 'guild:bulletin',
+      bulletin: buildGuildBulletin(),
     });
   };
 
@@ -336,6 +428,8 @@ async function startServer() {
       anim: 'idle',
       weaponId: 'claymore',
       biome: 'castle',
+      realm: 'citadel',
+      guildRank: 'F',
       bossesDefeated: 0,
       color,
       worldId: ownWorldId,
@@ -357,6 +451,8 @@ async function startServer() {
         isPublic: ownRoom.isPublic,
         peers: getRoomPeers(ownWorldId),
         worlds: listPublicWorlds(),
+        adventurers: listOnlineAdventurers(),
+        bulletin: buildGuildBulletin(),
         stats: {
           onlineCount: peers.size,
           worldPlayerCount: ownRoom.members.size,
@@ -384,6 +480,10 @@ async function startServer() {
           current.anim = typeof msg.anim === 'string' ? (msg.anim as PeerState['anim']) : 'idle';
           current.weaponId = typeof msg.weaponId === 'string' ? msg.weaponId : current.weaponId;
           current.biome = typeof msg.biome === 'string' ? msg.biome : current.biome;
+          const prevRealm = current.realm;
+          const prevRank = current.guildRank;
+          current.realm = typeof msg.realm === 'string' ? msg.realm : current.realm;
+          current.guildRank = typeof msg.guildRank === 'string' ? msg.guildRank : current.guildRank;
           current.bossesDefeated = Number.isFinite(msg.bossesDefeated)
             ? msg.bossesDefeated
             : current.bossesDefeated;
@@ -391,6 +491,15 @@ async function startServer() {
             current.customization = msg.customization as WarriorCustomization;
           }
           current.lastSeen = Date.now();
+
+          if (prevRealm !== current.realm || prevRank !== current.guildRank) {
+            const existingRec = adventurerRecords.get(peerId) ?? { name: current.name, rank: current.guildRank, clears: 0 };
+            existingRec.name = current.name;
+            existingRec.rank = current.guildRank;
+            adventurerRecords.set(peerId, existingRec);
+            broadcastWorldsList();
+            broadcastGuildBulletin();
+          }
 
           if (current.role === 'host') {
             const hostedRoom = worlds.get(current.worldId);
@@ -467,6 +576,7 @@ async function startServer() {
               type: 'worlds:list',
               worlds: listPublicWorlds(),
               onlineCount: peers.size,
+              adventurers: listOnlineAdventurers(),
             }),
           );
         } else if (msg.type === 'world:milestone') {
@@ -483,6 +593,80 @@ async function startServer() {
               totalGlobalSecretsFound,
             },
           });
+        } else if (msg.type === 'guild:invite' && typeof msg.toPeerId === 'string' && typeof msg.missionId === 'string') {
+          const targetWs = sockets.get(msg.toPeerId);
+          if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+            const invite = {
+              inviteId: `inv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              fromPeerId: peerId,
+              fromName: current.name,
+              fromRank: current.guildRank,
+              toPeerId: msg.toPeerId,
+              missionId: msg.missionId,
+              missionTitle: typeof msg.missionTitle === 'string' ? msg.missionTitle.slice(0, 60) : msg.missionId,
+              worldId: current.worldId,
+            };
+            targetWs.send(JSON.stringify({ type: 'guild:invite_received', invite }));
+          }
+        } else if (
+          msg.type === 'guild:invite_response' &&
+          typeof msg.fromPeerId === 'string' &&
+          typeof msg.missionId === 'string'
+        ) {
+          const hostPeer = peers.get(msg.fromPeerId);
+          const hostWs = sockets.get(msg.fromPeerId);
+          if (msg.accept && hostPeer) {
+            if (current.worldId !== hostPeer.worldId) {
+              movePeerToWorld(peerId, hostPeer.worldId);
+            }
+            const payload = JSON.stringify({
+              type: 'guild:party_start',
+              missionId: msg.missionId,
+              hostPeerId: hostPeer.id,
+              partnerName: current.name,
+            });
+            if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+            if (hostWs && hostWs.readyState === WebSocket.OPEN) hostWs.send(payload);
+            recentBulletinFeed.unshift(
+              `[${hostPeer.guildRank}] ${hostPeer.name} & ${current.name} departed on a Guild Quest!`,
+            );
+            broadcastGuildBulletin();
+          } else if (hostWs && hostWs.readyState === WebSocket.OPEN) {
+            hostWs.send(
+              JSON.stringify({
+                type: 'world:announcement',
+                fromName: current.name,
+                kind: 'guild_decline',
+                label: `${current.name} declined the mission invite.`,
+              }),
+            );
+          }
+        } else if (msg.type === 'guild:mission_start' && typeof msg.missionId === 'string') {
+          const entry = popularMissionCounts[msg.missionId];
+          if (entry) {
+            entry.activeParties += 1;
+          }
+          recentBulletinFeed.unshift(
+            `[${current.guildRank}] ${current.name} accepted "${entry?.title ?? msg.missionId}"!`,
+          );
+          if (recentBulletinFeed.length > 8) recentBulletinFeed.length = 8;
+          broadcastGuildBulletin();
+        } else if (msg.type === 'guild:mission_complete' && typeof msg.missionId === 'string') {
+          const entry = popularMissionCounts[msg.missionId];
+          if (entry) {
+            entry.activeParties = Math.max(0, entry.activeParties - 1);
+            entry.completions += 1;
+          }
+          const rec = adventurerRecords.get(peerId) ?? { name: current.name, rank: current.guildRank, clears: 0 };
+          rec.name = current.name;
+          rec.rank = typeof msg.newRank === 'string' ? msg.newRank : current.guildRank;
+          rec.clears += 1;
+          adventurerRecords.set(peerId, rec);
+          recentBulletinFeed.unshift(
+            `[${rec.rank}] ${current.name} completed ${entry?.title ?? msg.missionId}!`,
+          );
+          if (recentBulletinFeed.length > 8) recentBulletinFeed.length = 8;
+          broadcastGuildBulletin();
         }
       } catch {
         // Ignore malformed packets

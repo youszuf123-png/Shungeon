@@ -2,14 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BOSSES_PER_BIOME,
+  ORB_DROP_CHANCE,
   TOTAL_BOSSES,
   TOTAL_HIDDEN_PASSAGES,
   WEAPONS,
+  createGyroZeppeliBossDef,
   getBiomeForBossIndex,
   getBossDef,
+  getBossDifficultyMultiplier,
 } from './data';
 import { CHUNK_WIDTH, generateChunk, getBiomeForChunk } from './worldGen';
 import {
+  addInventoryResource,
   allocateStatPoint,
   applyDamageToBoss,
   assignSkillToSlot,
@@ -21,6 +25,7 @@ import {
   getMonsterLevelMultiplier,
   grantKillStatPoints,
   recordBossFightProgress,
+  rollMonsterOrbDrop,
   startWeaponAttack,
   stepPlayerPhysics,
   triggerPlayerDash,
@@ -30,6 +35,7 @@ import {
 } from './rules';
 import {
   createBossBattleState,
+  resolveBattleOrb,
   resolveBattlePotion,
   resolvePlayerBattleSkill,
   resolvePlayerBattleSword,
@@ -49,6 +55,24 @@ import {
   normalizeLoadedSave,
   toSaveSummary,
 } from './saveSystem';
+import {
+  GUILD_MISSIONS,
+  ISEKAI_IDLE_TRANSPORT_SECONDS,
+  PURPLE_FLAME_SKILLS,
+  buyOrEquipWardrobeItem,
+  canStartGuildMission,
+  createBanditWave,
+  createDemonKingPurpleFlameCast,
+  createDemonRealmWave,
+  createGoblinDungeonWave,
+  createGuildNpcs,
+  createThreeDemonKingsInit,
+  createTownNpcs,
+  promoteGuildRankAfterMission,
+  resetPlayerForIsekai,
+  shouldIdleTriggerIsekai,
+  stepIsekaiNpcs,
+} from './isekai';
 
 test('world generates 120 unique bosses across 3 biomes (1-40 castle, 41-80 volcano, 81-120 forest)', () => {
   const names = new Set<string>();
@@ -521,4 +545,277 @@ test('dash bursts forward with cooldown, monsters scale x1.4 per level, and 5 bo
   assert.equal(fifth.cooldownSeconds, 60);
   assert.equal(fifth.nextStreak, 0);
 });
+
+test('boss difficulty scales +40% every 10 bosses and Gyro Zeppeli matches 3x player HP and exact player ATK', () => {
+  assert.equal(getBossDifficultyMultiplier(1), 1);
+  assert.equal(getBossDifficultyMultiplier(10), 1);
+  assert.equal(getBossDifficultyMultiplier(11), 1.4);
+  assert.equal(getBossDifficultyMultiplier(21), 1.8);
+  assert.equal(getBossDifficultyMultiplier(100), 4.6);
+
+  const player = createInitialPlayer();
+  player.maxHp = 220;
+  player.hp = 220;
+  allocateStatPoint(player, 'attack', 0);
+  const playerAtk = calculateAttackDamage(player, 1, false);
+  const gyroDef = createGyroZeppeliBossDef(player.maxHp, playerAtk);
+
+  assert.equal(gyroDef.index, 101);
+  assert.equal(gyroDef.name, 'Gyro Zeppeli');
+  assert.equal(gyroDef.isGyroBoss, true);
+  assert.equal(gyroDef.maxHp, 660);
+  assert.equal(gyroDef.gyroAttackDamage, playerAtk);
+  assert.ok((gyroDef.emotes?.length ?? 0) >= 3);
+
+  const gyroBoss = {
+    def: gyroDef,
+    x: 500,
+    y: 180,
+    vx: 0,
+    vy: 0,
+    w: 44,
+    h: 64,
+    hp: gyroDef.maxHp,
+    maxHp: gyroDef.maxHp,
+    facing: -1 as const,
+    state: 'idle' as const,
+    stateTimer: 0,
+    hitFlash: 0,
+    posePhase: 0,
+    arenaMinX: 400,
+    arenaMaxX: 600,
+    defeated: false,
+  };
+  const battle = createBossBattleState(gyroBoss);
+  battle.phase = 'menu';
+  const counter = triggerBossCounterTurn(battle, player);
+  assert.equal(counter.skippedByFreeze, false);
+  assert.equal(counter.damageTaken, playerAtk);
+  assert.equal(battle.slashFx?.style, 'gyro_green_ball');
+  assert.ok(battle.gyroEmote && battle.gyroEmote.length > 0);
+});
+
+test('2-minute idle trigger and Isekai arrival reset stats while keeping combat, weapons, skills & F-Rank badge', () => {
+  assert.equal(ISEKAI_IDLE_TRANSPORT_SECONDS, 120);
+  assert.equal(shouldIdleTriggerIsekai('citadel', 119.9, true, false), false);
+  assert.equal(shouldIdleTriggerIsekai('citadel', 120, true, false), true);
+  assert.equal(shouldIdleTriggerIsekai('citadel', 150, true, true), false);
+  assert.equal(shouldIdleTriggerIsekai('isekai_town', 150, true, false), false);
+
+  const player = createInitialPlayer();
+  player.level = 18;
+  player.statPoints = 12;
+  player.stats = { attack: 5, skillDmg: 4, hp: 6, speed: 3 };
+  player.maxHp = 205;
+  player.hp = 180;
+  player.unlockedWeapons.push('fire_sword');
+  equipWeapon(player, 'fire_sword');
+  assignSkillToSlot(player, 1, 'chrono_freeze');
+  const inv = createInitialInventory();
+
+  const res = resetPlayerForIsekai(player, inv);
+  assert.equal(res.rank, 'F');
+  assert.equal(player.level, 1);
+  assert.equal(player.statPoints, 0);
+  assert.deepEqual(player.stats, { skillDmg: 0, attack: 0, hp: 0, speed: 0 });
+  assert.equal(player.maxHp, 115);
+  assert.equal(player.hp, 115);
+  // Combat weapon and skills remain intact
+  assert.equal(player.equippedWeapon, 'fire_sword');
+  assert.equal(player.skillSlots[1], 'chrono_freeze');
+  assert.ok(inv.some((it) => it.id === 'rank_badge_f' && it.count >= 1));
+});
+
+test('Isekai guild rank progression (F -> S), NPC forward/back patrolling, Wardrobe Shop & Demon King purple flames', () => {
+  const inv = createInitialInventory();
+  const player = createInitialPlayer();
+  resetPlayerForIsekai(player, inv);
+  player.gold = 200;
+
+  assert.equal(canStartGuildMission('F', 'f_goblin_warren'), true);
+  assert.equal(canStartGuildMission('F', 'c_princess_carriage'), false);
+
+  let rank = 'F' as const;
+  const rankSequence: typeof GUILD_MISSIONS[number]['id'][] = [
+    'f_goblin_warren',
+    'e_hobgoblin_caves',
+    'd_deep_goblin_keep',
+    'c_princess_carriage',
+    'b_demon_invasion',
+    'a_three_demon_kings',
+  ];
+  for (const mId of rankSequence) {
+    assert.equal(canStartGuildMission(rank, mId), true);
+    const promo = promoteGuildRankAfterMission(rank, mId, inv);
+    assert.equal(promo.promoted, true);
+    rank = promo.nextRank as typeof rank;
+  }
+  assert.equal(rank, 'S');
+  assert.ok(inv.some((it) => it.id === 'rank_badge_s'));
+
+  // NPCs walk forward and backward smoothly & tavern drinkers animate drinking
+  const townNpcs = createTownNpcs(false);
+  const guildNpcs = createGuildNpcs(false);
+  const walker = townNpcs[0];
+  walker.x = walker.maxX - 1;
+  walker.speed = 30;
+  stepIsekaiNpcs(townNpcs, 0.2);
+  assert.ok(walker.speed < 0);
+  assert.equal(walker.facing, -1);
+  const drinker = guildNpcs.find((n) => n.sitting)!;
+  const phaseBefore = drinker.drinkingPhase ?? 0;
+  stepIsekaiNpcs(guildNpcs, 0.5);
+  assert.ok((drinker.drinkingPhase ?? 0) > phaseBefore);
+
+  // Wardrobe purchase & Royal Crown gating
+  const unlocked = ['outfit_knight_plate', 'hat_helm'];
+  assert.equal(buyOrEquipWardrobeItem(player, unlocked, 'toggle_crown', false).ok, false);
+  const buyCoat = buyOrEquipWardrobeItem(player, unlocked, 'outfit_guild_coat', false);
+  assert.equal(buyCoat.ok, true);
+  assert.equal(player.customization.outfitStyle, 'guild_coat');
+  assert.equal(buyOrEquipWardrobeItem(player, unlocked, 'toggle_crown', true).ok, true);
+  assert.equal(player.customization.crownEquipped, true);
+
+  // Mission enemy rosters & 3 Demon Kings purple flame cycle
+  const gobs = createGoblinDungeonWave('f_goblin_warren', 0);
+  assert.ok(gobs.some((e) => e.archetype === 'goblin_normal'));
+  assert.ok(gobs.some((e) => e.archetype === 'hobgoblin'));
+  const bandits = createBanditWave(160, 0);
+  assert.ok(bandits.some((e) => e.archetype === 'bandit_fighter'));
+  assert.ok(bandits.some((e) => e.archetype === 'bandit_archer'));
+  const demons = createDemonRealmWave();
+  assert.ok(demons.some((e) => e.archetype === 'demon_succubus'));
+  assert.ok(demons.some((e) => e.archetype === 'demon_tank'));
+  assert.ok(demons.some((e) => e.archetype === 'demon_lightning'));
+
+  const { demonKings, minions } = createThreeDemonKingsInit(['goblin_normal', 'bandit_archer', 'demon_succubus']);
+  assert.equal(demonKings.length, 3);
+  assert.equal(minions.length, 3);
+  const seenPurpleSkills = new Set<string>();
+  for (let i = 0; i < PURPLE_FLAME_SKILLS.length; i++) {
+    const cast = createDemonKingPurpleFlameCast(demonKings[0], i, 180);
+    seenPurpleSkills.add(cast.skillName);
+    assert.ok(cast.zones.length + cast.projectiles.length >= 2);
+  }
+  assert.equal(seenPurpleSkills.size, PURPLE_FLAME_SKILLS.length);
+});
+
+test('save system roundtrips Isekai realm, guild rank, crown, wardrobe & badge', () => {
+  const player = createInitialPlayer();
+  const inv = createInitialInventory();
+  resetPlayerForIsekai(player, inv);
+  promoteGuildRankAfterMission('F', 'f_goblin_warren', inv);
+
+  const payload = createSavePayload({
+    saveId: 'isekai_slot',
+    playerName: 'KazumaKnight',
+    biome: 'forest',
+    player,
+    inventory: inv,
+    defeatedBosses: new Set([100, 101]),
+    discoveredSecrets: new Set(),
+    openedChests: new Set(),
+    volcanoBridgeFallTriggered: false,
+    darkSanctumDiscovered: false,
+    realm: 'isekai_town',
+    guildRank: 'E',
+    unlockedWardrobe: ['outfit_knight_plate', 'hat_helm', 'outfit_adventurer_tunic'],
+    foughtIsekaiEnemies: ['goblin_normal', 'hobgoblin'],
+    crownUnlocked: true,
+    gyroDefeated: true,
+    isekaiCompleted: true,
+  });
+
+  const restored = normalizeLoadedSave(JSON.parse(JSON.stringify(payload)));
+  assert.ok(restored !== null);
+  assert.equal(restored.realm, 'isekai_town');
+  assert.equal(restored.guildRank, 'E');
+  assert.equal(restored.crownUnlocked, true);
+  assert.equal(restored.gyroDefeated, true);
+  assert.equal(restored.isekaiCompleted, true);
+  assert.deepEqual(restored.foughtIsekaiEnemies, ['goblin_normal', 'hobgoblin']);
+  assert.ok(restored.inventory.some((it) => it.id === 'rank_badge_e'));
+});
+
+test('elemental orbs drop at 8% chance, apply Flame 25% HP / Wind +30% DMG / Electrical 1-turn stun, and persist in saves', () => {
+  assert.equal(ORB_DROP_CHANCE, 0.08);
+  assert.equal(rollMonsterOrbDrop(() => 0.08), null);
+  assert.equal(rollMonsterOrbDrop(() => 0.5), null);
+
+  let step = 0;
+  const seqFlame = () => [0.02, 0.1][step++];
+  assert.equal(rollMonsterOrbDrop(seqFlame), 'orb_flame');
+  step = 0;
+  const seqWind = () => [0.05, 0.5][step++];
+  assert.equal(rollMonsterOrbDrop(seqWind), 'orb_wind');
+  step = 0;
+  const seqElec = () => [0.07, 0.9][step++];
+  assert.equal(rollMonsterOrbDrop(seqElec), 'orb_electric');
+
+  const inv = createInitialInventory();
+  addInventoryResource(inv, 'orb_flame', 1);
+  addInventoryResource(inv, 'orb_wind', 1);
+  addInventoryResource(inv, 'orb_electric', 1);
+
+  const player = createInitialPlayer();
+  const baseSword = calculateAttackDamage(player, 1.15, false);
+
+  const chunk1 = generateChunk(1);
+  const boss = chunk1.boss!;
+  boss.maxHp = 400;
+  boss.hp = 400;
+  const battle = createBossBattleState(boss);
+
+  // 1. Electrical Orb stuns boss for 1 turn
+  battle.phase = 'menu';
+  const elecRes = resolveBattleOrb(battle, inv, 'orb_electric');
+  assert.equal(elecRes.ok, true);
+  assert.equal(battle.bossFrozenTurns, 1);
+  assert.equal(battle.bossStunReason, 'electric');
+  const stunnedCounter = triggerBossCounterTurn(battle, player);
+  assert.equal(stunnedCounter.skippedByFreeze, true);
+  assert.equal(stunnedCounter.damageTaken, 0);
+
+  // 2. Wind Orb increases boss damage taken by +30%
+  battle.phase = 'menu';
+  const windRes = resolveBattleOrb(battle, inv, 'orb_wind');
+  assert.equal(windRes.ok, true);
+  assert.equal(battle.windVulnerable, true);
+
+  battle.phase = 'menu';
+  const boostedSword = resolvePlayerBattleSword(battle, player);
+  assert.equal(boostedSword.ok, true);
+  assert.equal(boostedSword.damage, Math.round(baseSword * 1.3));
+
+  // 3. Flame Orb deals 25% of boss total Max HP (100 out of 400)
+  const hpBeforeFlame = boss.hp;
+  battle.phase = 'menu';
+  const flameRes = resolveBattleOrb(battle, inv, 'orb_flame');
+  assert.equal(flameRes.ok, true);
+  assert.equal(flameRes.damage, 100);
+  assert.equal(boss.hp, hpBeforeFlame - 100);
+
+  // Save/load preserves orb inventory counts
+  addInventoryResource(inv, 'orb_flame', 2);
+  addInventoryResource(inv, 'orb_wind', 3);
+  const payload = createSavePayload({
+    saveId: 'orb_slot',
+    playerName: 'OrbKnight',
+    biome: 'castle',
+    player,
+    inventory: inv,
+    defeatedBosses: new Set(),
+    discoveredSecrets: new Set(),
+    openedChests: new Set(),
+    volcanoBridgeFallTriggered: false,
+    darkSanctumDiscovered: false,
+  });
+  const restored = normalizeLoadedSave(JSON.parse(JSON.stringify(payload)));
+  assert.ok(restored !== null);
+  assert.equal(restored.inventory.find((i) => i.id === 'orb_flame')?.count, 2);
+  assert.equal(restored.inventory.find((i) => i.id === 'orb_wind')?.count, 3);
+  assert.equal(restored.inventory.find((i) => i.id === 'orb_electric')?.count, 0);
+});
+
+
 

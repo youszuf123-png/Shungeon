@@ -1,11 +1,18 @@
 import { SKILLS, WEAPONS } from './data';
-import { applyDamageToBoss, calculateAttackDamage, useInventoryItem } from './rules';
+import {
+  FLAME_ORB_HP_RATIO,
+  WIND_ORB_DAMAGE_BONUS,
+  applyDamageToBoss,
+  calculateAttackDamage,
+  useInventoryItem,
+} from './rules';
 import type {
   ActiveBoss,
   BossBattlePhase,
   BossBattleSlashFx,
   BossBattleSnapshot,
   InventoryItem,
+  OrbId,
   PlayerState,
   SkillId,
 } from './types';
@@ -23,11 +30,14 @@ export interface BossBattleState {
   guardActive: boolean;
   evadeBoost: boolean;
   bossFrozenTurns: number;
+  bossStunReason: 'freeze' | 'electric' | null;
+  windVulnerable: boolean;
   slashFx: BossBattleSlashFx | null;
   playerLunge: number;
   bossLunge: number;
   activeSkillName: string | null;
   activeSkillPalette: [string, string, string] | null;
+  gyroEmote: string | null;
   pendingOutcome: 'continue' | 'victory' | 'defeat' | 'run' | 'escape';
 }
 
@@ -53,11 +63,14 @@ export function createBossBattleState(boss: ActiveBoss): BossBattleState {
     guardActive: false,
     evadeBoost: false,
     bossFrozenTurns: 0,
+    bossStunReason: null,
+    windVulnerable: false,
     slashFx: null,
     playerLunge: 0,
     bossLunge: 0,
     activeSkillName: null,
     activeSkillPalette: null,
+    gyroEmote: boss.def.isGyroBoss ? (boss.def.emotes?.[0] ?? null) : null,
     pendingOutcome: 'continue',
   };
 }
@@ -80,10 +93,14 @@ export function toBossBattleSnapshot(b: BossBattleState): BossBattleSnapshot {
     lastBossDamage: b.lastBossDamage,
     guardActive: b.guardActive,
     bossFrozenTurns: b.bossFrozenTurns,
+    bossStunReason: b.bossStunReason,
+    windVulnerable: b.windVulnerable,
     primaryColor: b.boss.def.primaryColor,
     secondaryColor: b.boss.def.secondaryColor,
     auraColor: b.boss.def.auraColor,
     isMegaBoss: Boolean(b.boss.def.isMegaBoss),
+    isGyroBoss: Boolean(b.boss.def.isGyroBoss),
+    gyroEmote: b.gyroEmote,
     megaArchetype: b.boss.def.megaArchetype,
     activeSkillName: b.activeSkillName,
     activeSkillPalette: b.activeSkillPalette,
@@ -99,7 +116,10 @@ export function resolvePlayerBattleSword(
   }
   const weapon = WEAPONS[player.equippedWeapon];
   // Slight battle scaling so 1v1 Pokemon duels feel crisp and rewarding
-  const baseDmg = calculateAttackDamage(player, 1.15);
+  const rawDmg = calculateAttackDamage(player, 1.15);
+  const baseDmg = battle.windVulnerable
+    ? Math.round(rawDmg * (1 + WIND_ORB_DAMAGE_BONUS))
+    : rawDmg;
   const res = applyDamageToBoss(battle.boss, baseDmg, 0);
 
   // Restore small stamina on standard sword strike
@@ -118,7 +138,7 @@ export function resolvePlayerBattleSword(
   battle.lastPlayerDamage = baseDmg;
   battle.lastBossDamage = null;
   battle.speaker = 'Warrior';
-  battle.message = `${weapon.styleName}! Slashed ${battle.boss.def.name} for ${baseDmg} DMG!`;
+  battle.message = `${weapon.styleName}! Slashed ${battle.boss.def.name} for ${baseDmg} DMG${battle.windVulnerable ? ' (+30% Wind Vuln!)' : ''}!`;
   battle.slashFx = {
     target: 'boss',
     style: slashStyle,
@@ -163,7 +183,11 @@ export function resolvePlayerBattleSkill(
   }
 
   player.stamina -= skill.staminaCost;
-  const dmg = calculateAttackDamage(player, skill.damageMultiplier * 1.15, true);
+  const rawDmg = calculateAttackDamage(player, skill.damageMultiplier * 1.15, true);
+  const dmg = battle.windVulnerable
+    ? Math.round(rawDmg * (1 + WIND_ORB_DAMAGE_BONUS))
+    : rawDmg;
+  const windNote = battle.windVulnerable ? ' [+30% Wind!]' : '';
   let defeated = false;
   let slashStyle: BossBattleSlashFx['style'] = 'sword';
 
@@ -172,35 +196,36 @@ export function resolvePlayerBattleSkill(
     const chip = Math.round(dmg * 0.45);
     defeated = applyDamageToBoss(battle.boss, chip, 0).defeatedNow;
     battle.lastPlayerDamage = chip;
-    battle.message = `Royal Deflect stance raised! Glancing riposte dealt ${chip} DMG!`;
+    battle.message = `Royal Deflect stance raised! Glancing riposte dealt ${chip} DMG${windNote}!`;
     slashStyle = 'cross';
   } else if (skillId === 'chrono_freeze') {
-    battle.bossFrozenTurns = 1;
+    battle.bossFrozenTurns += 1;
+    battle.bossStunReason = battle.bossStunReason ?? 'freeze';
     defeated = applyDamageToBoss(battle.boss, dmg, 0).defeatedNow;
     battle.lastPlayerDamage = dmg;
-    battle.message = `TOKI WO TOMARE! ${battle.boss.def.name} is frozen for 1 turn! (${dmg} DMG)`;
+    battle.message = `TOKI WO TOMARE! ${battle.boss.def.name} is frozen for 1 turn! (${dmg} DMG${windNote})`;
     slashStyle = 'cross';
   } else if (skillId === 'stand_rush') {
     defeated = applyDamageToBoss(battle.boss, dmg, 0).defeatedNow;
     battle.lastPlayerDamage = dmg;
-    battle.message = `ORA ORA ORA! Pixel Star Platinum punches ${battle.boss.def.name} for ${dmg} DMG!`;
+    battle.message = `ORA ORA ORA! Pixel Star Platinum punches ${battle.boss.def.name} for ${dmg} DMG${windNote}!`;
     slashStyle = 'ora_barrage';
   } else if (skillId === 'candlefire_wave') {
     defeated = applyDamageToBoss(battle.boss, dmg, 0).defeatedNow;
     battle.lastPlayerDamage = dmg;
-    battle.message = `Candlefire Arc! Blazing slash scorched ${battle.boss.def.name} for ${dmg} DMG!`;
+    battle.message = `Candlefire Arc! Blazing slash scorched ${battle.boss.def.name} for ${dmg} DMG${windNote}!`;
     slashStyle = 'fire';
   } else if (skillId === 'sunburst_cleave') {
     defeated = applyDamageToBoss(battle.boss, dmg, 0).defeatedNow;
     battle.lastPlayerDamage = dmg;
-    battle.message = `Hamon Sunburst! Golden solar cleave dealt ${dmg} DMG!`;
+    battle.message = `Hamon Sunburst! Golden solar cleave dealt ${dmg} DMG${windNote}!`;
     slashStyle = 'solar';
   } else {
     // blade_dash
     battle.evadeBoost = true;
     defeated = applyDamageToBoss(battle.boss, dmg, 0).defeatedNow;
     battle.lastPlayerDamage = dmg;
-    battle.message = `Phantom Lunge! Piercing flash dealt ${dmg} DMG (+35% Evasion)!`;
+    battle.message = `Phantom Lunge! Piercing flash dealt ${dmg} DMG${windNote} (+35% Evasion)!`;
     slashStyle = 'sword';
   }
 
@@ -248,6 +273,81 @@ export function resolveBattlePotion(
   return res;
 }
 
+export function resolveBattleOrb(
+  battle: BossBattleState,
+  inventory: InventoryItem[],
+  orbId: OrbId,
+): { ok: boolean; damage: number; defeated: boolean; message: string } {
+  if (battle.phase !== 'menu') {
+    return { ok: false, damage: 0, defeated: false, message: 'Wait for your turn.' };
+  }
+  const orbItem = inventory.find((i) => i.id === orbId);
+  if (!orbItem || orbItem.count <= 0) {
+    return { ok: false, damage: 0, defeated: false, message: 'No orbs of that element left!' };
+  }
+
+  orbItem.count -= 1;
+  battle.lastBossDamage = null;
+
+  if (orbId === 'orb_flame') {
+    const dmg = Math.max(1, Math.round(battle.boss.maxHp * FLAME_ORB_HP_RATIO));
+    const res = applyDamageToBoss(battle.boss, dmg, 0);
+    battle.phase = 'player_anim';
+    battle.phaseDuration = 0.85;
+    battle.phaseTimer = 0.85;
+    battle.lastPlayerDamage = dmg;
+    battle.speaker = 'Flame Orb';
+    battle.message = `Flame Orb detonated! Scorched ${battle.boss.def.name} for ${dmg} DMG (25% Max HP)!`;
+    battle.slashFx = {
+      target: 'boss',
+      style: 'orb_flame',
+      color: '#f97316',
+      accentColor: '#fef08a',
+      progress: 0,
+    };
+    battle.pendingOutcome = res.defeatedNow ? 'victory' : 'continue';
+    return { ok: true, damage: dmg, defeated: res.defeatedNow, message: battle.message };
+  }
+
+  if (orbId === 'orb_wind') {
+    battle.windVulnerable = true;
+    battle.phase = 'player_anim';
+    battle.phaseDuration = 0.78;
+    battle.phaseTimer = 0.78;
+    battle.lastPlayerDamage = null;
+    battle.speaker = 'Wind Orb';
+    battle.message = `Gale Vortex! ${battle.boss.def.name} now takes +30% EXTRA DMG from all attacks!`;
+    battle.slashFx = {
+      target: 'boss',
+      style: 'orb_wind',
+      color: '#2dd4bf',
+      accentColor: '#ccfbf1',
+      progress: 0,
+    };
+    battle.pendingOutcome = 'continue';
+    return { ok: true, damage: 0, defeated: false, message: battle.message };
+  }
+
+  // orb_electric
+  battle.bossFrozenTurns += 1;
+  battle.bossStunReason = 'electric';
+  battle.phase = 'player_anim';
+  battle.phaseDuration = 0.82;
+  battle.phaseTimer = 0.82;
+  battle.lastPlayerDamage = null;
+  battle.speaker = 'Electrical Orb';
+  battle.message = `High-Voltage Surge! ${battle.boss.def.name} is STUNNED for 1 turn!`;
+  battle.slashFx = {
+    target: 'boss',
+    style: 'orb_electric',
+    color: '#facc15',
+    accentColor: '#38bdf8',
+    progress: 0,
+  };
+  battle.pendingOutcome = 'continue';
+  return { ok: true, damage: 0, defeated: false, message: battle.message };
+}
+
 export function startBattleRun(battle: BossBattleState): boolean {
   if (battle.phase !== 'menu') return false;
   battle.phase = 'run_anim';
@@ -277,12 +377,18 @@ export function triggerBossCounterTurn(
   player: PlayerState,
 ): { skippedByFreeze: boolean; damageTaken: number; playerDefeated: boolean; shout: string } {
   if (battle.bossFrozenTurns > 0) {
+    const isElectric = battle.bossStunReason === 'electric';
     battle.bossFrozenTurns -= 1;
+    if (battle.bossFrozenTurns === 0) {
+      battle.bossStunReason = null;
+    }
     battle.phase = 'enemy_anim';
     battle.phaseDuration = 0.7;
     battle.phaseTimer = 0.7;
     battle.speaker = battle.boss.def.name;
-    battle.message = `${battle.boss.def.name} is frozen in Stopped Time and could not slash!`;
+    battle.message = isElectric
+      ? `${battle.boss.def.name} is STUNNED by Electrical Orb lightning and loses their turn!`
+      : `${battle.boss.def.name} is frozen in Stopped Time and could not slash!`;
     battle.slashFx = null;
     battle.lastBossDamage = 0;
     battle.pendingOutcome = 'continue';
@@ -290,7 +396,64 @@ export function triggerBossCounterTurn(
       skippedByFreeze: true,
       damageTaken: 0,
       playerDefeated: false,
-      shout: 'Frozen in time!',
+      shout: isElectric ? 'Stunned by lightning!' : 'Frozen in time!',
+    };
+  }
+
+  if (battle.boss.def.isGyroBoss) {
+    const skills = battle.boss.def.megaSkills ?? [];
+    const skill = skills.length > 0
+      ? skills[(battle.turnCount - 1) % skills.length]
+      : {
+          id: 'gyro_emerald_spin',
+          name: 'Emerald Flame Steel Ball',
+          animStyle: 'gyro_green_ball' as const,
+          palette: ['#22c55e', '#86efac', '#fde047'] as [string, string, string],
+          damageMult: 1,
+          shout: 'Nyo-ho! Catch this spinning green-flaming Steel Ball!',
+        };
+    const emotes = battle.boss.def.emotes ?? [];
+    const emote = emotes.length > 0 ? emotes[(battle.turnCount - 1) % emotes.length] : 'Nyo-ho!';
+    battle.gyroEmote = emote;
+
+    // Exact player's attack damage! Guard/Evade still mitigate strategically if chosen
+    const baseGyroAtk = battle.boss.def.gyroAttackDamage ?? calculateAttackDamage(player, 1, false);
+    let finalDamage = Math.max(1, Math.round(baseGyroAtk));
+    if (battle.guardActive) {
+      finalDamage = Math.max(1, Math.round(finalDamage * 0.35));
+      battle.guardActive = false;
+    } else if (battle.evadeBoost) {
+      finalDamage = Math.max(1, Math.round(finalDamage * 0.65));
+      battle.evadeBoost = false;
+    }
+
+    player.hp = Math.max(0, player.hp - finalDamage);
+    player.hitFlash = 0.22;
+
+    battle.phase = 'enemy_anim';
+    battle.phaseDuration = 1.1;
+    battle.phaseTimer = 1.1;
+    battle.lastBossDamage = finalDamage;
+    battle.activeSkillName = skill.name;
+    battle.activeSkillPalette = skill.palette;
+    battle.speaker = 'Gyro Zeppeli [BALL BREAKER]';
+    battle.message = `${emote} ${skill.name.toUpperCase()}! (-${finalDamage} HP)`;
+    battle.slashFx = {
+      target: 'player',
+      style: 'gyro_green_ball',
+      color: skill.palette[0],
+      accentColor: skill.palette[1],
+      palette: skill.palette,
+      skillName: skill.name,
+      progress: 0,
+    };
+    battle.pendingOutcome = player.hp <= 0 ? 'defeat' : 'continue';
+
+    return {
+      skippedByFreeze: false,
+      damageTaken: finalDamage,
+      playerDefeated: player.hp <= 0,
+      shout: skill.shout,
     };
   }
 
@@ -351,9 +514,12 @@ export function triggerBossCounterTurn(
         : pattern === 'stand_barrage'
           ? 1.08
           : 1.0;
+  const diffMult = battle.boss.def.difficultyMultiplier ?? 1;
 
   const rawDamage = Math.round(
-    (13 + Math.floor(battle.boss.def.index * 0.45) + (battle.turnCount % 3) * 2) * patternMult,
+    (13 + Math.floor(battle.boss.def.index * 0.45) + (battle.turnCount % 3) * 2) *
+      patternMult *
+      diffMult,
   );
   // Speed stat passively shaves off incoming boss grazing damage (up to 25%)
   const speedReduction = Math.min(0.25, player.stats.speed * 0.015);
@@ -385,6 +551,7 @@ export function triggerBossCounterTurn(
     lightning_overdrive: 'lightning',
     magma_eruption: 'fire',
     chrono_shear: 'stand_claw',
+    gyro_spin: 'gyro_green_ball',
   };
 
   const shout = battle.boss.def.battleShout;

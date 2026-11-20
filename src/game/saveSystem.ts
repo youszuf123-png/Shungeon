@@ -7,8 +7,11 @@ import {
 import type {
   BasteraSaveSummary,
   BiomeId,
+  EnemyArchetype,
+  GuildRank,
   InventoryItem,
   PlayerState,
+  RealmMode,
   SkillId,
   WeaponId,
   WorldRole,
@@ -32,6 +35,13 @@ export interface BasteraSaveData {
   darkSanctumDiscovered: boolean;
   bossFoughtStreak?: number;
   bossCooldownSeconds?: number;
+  realm?: RealmMode;
+  guildRank?: GuildRank;
+  unlockedWardrobe?: string[];
+  foughtIsekaiEnemies?: EnemyArchetype[];
+  crownUnlocked?: boolean;
+  gyroDefeated?: boolean;
+  isekaiCompleted?: boolean;
 }
 
 export function canPlayerEngageBoss(role: WorldRole): boolean {
@@ -51,6 +61,13 @@ export function createSavePayload(params: {
   darkSanctumDiscovered: boolean;
   bossFoughtStreak?: number;
   bossCooldownSeconds?: number;
+  realm?: RealmMode;
+  guildRank?: GuildRank;
+  unlockedWardrobe?: string[];
+  foughtIsekaiEnemies?: EnemyArchetype[];
+  crownUnlocked?: boolean;
+  gyroDefeated?: boolean;
+  isekaiCompleted?: boolean;
 }): BasteraSaveData {
   const cleanId = params.saveId.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'default_slot';
   return {
@@ -80,6 +97,13 @@ export function createSavePayload(params: {
     darkSanctumDiscovered: params.darkSanctumDiscovered,
     bossFoughtStreak: params.bossFoughtStreak ?? 0,
     bossCooldownSeconds: params.bossCooldownSeconds ?? 0,
+    realm: params.realm ?? 'citadel',
+    guildRank: params.guildRank ?? 'F',
+    unlockedWardrobe: params.unlockedWardrobe ? [...params.unlockedWardrobe] : ['outfit_knight_plate', 'hat_helm'],
+    foughtIsekaiEnemies: params.foughtIsekaiEnemies ? [...params.foughtIsekaiEnemies] : [],
+    crownUnlocked: Boolean(params.crownUnlocked),
+    gyroDefeated: Boolean(params.gyroDefeated),
+    isekaiCompleted: Boolean(params.isekaiCompleted),
   };
 }
 
@@ -94,6 +118,8 @@ export function toSaveSummary(save: BasteraSaveData): BasteraSaveSummary {
     distanceMeters: Math.round((save.player.x - 68) / 16),
     gold: Math.round(save.player.gold),
     equippedWeapon: save.player.equippedWeapon,
+    realm: save.realm ?? 'citadel',
+    guildRank: save.guildRank ?? 'F',
   };
 }
 
@@ -156,6 +182,9 @@ export function normalizeLoadedSave(raw: unknown): BasteraSaveData | null {
       armorColor: rp.customization?.armorColor || DEFAULT_WARRIOR_CUSTOMIZATION.armorColor,
       visorColor: rp.customization?.visorColor || DEFAULT_WARRIOR_CUSTOMIZATION.visorColor,
       plumeColor: rp.customization?.plumeColor || DEFAULT_WARRIOR_CUSTOMIZATION.plumeColor,
+      outfitStyle: rp.customization?.outfitStyle || DEFAULT_WARRIOR_CUSTOMIZATION.outfitStyle,
+      headgearStyle: rp.customization?.headgearStyle || DEFAULT_WARRIOR_CUSTOMIZATION.headgearStyle,
+      crownEquipped: Boolean(rp.customization?.crownEquipped),
     },
     highestCheckpointX: Number.isFinite(rp.highestCheckpointX)
       ? Number(rp.highestCheckpointX)
@@ -174,6 +203,44 @@ export function normalizeLoadedSave(raw: unknown): BasteraSaveData | null {
       ? { ...baseItem, count: Math.max(0, Math.floor(found.count)) }
       : { ...baseItem };
   });
+
+  const validRealms: RealmMode[] = [
+    'citadel',
+    'isekai_town',
+    'isekai_guild',
+    'isekai_wardrobe',
+    'goblin_dungeon',
+    'carriage_escort',
+    'demon_realm',
+    'demon_king_arena',
+  ];
+  const realm: RealmMode =
+    typeof obj.realm === 'string' && validRealms.includes(obj.realm as RealmMode)
+      ? (obj.realm as RealmMode)
+      : 'citadel';
+
+  const validRanks: GuildRank[] = ['F', 'E', 'D', 'C', 'B', 'A', 'S'];
+  const guildRank: GuildRank =
+    typeof obj.guildRank === 'string' && validRanks.includes(obj.guildRank as GuildRank)
+      ? (obj.guildRank as GuildRank)
+      : 'F';
+
+  const savedBadge = rawInv.find(
+    (ri) => ri && typeof ri.id === 'string' && ri.id.startsWith('rank_badge_') && Number.isFinite(ri.count),
+  );
+  if (savedBadge) {
+    mergedInv.push({ ...savedBadge, count: Math.max(1, Math.floor(savedBadge.count)) });
+  } else if (realm !== 'citadel' || guildRank !== 'F') {
+    mergedInv.push({
+      id: `rank_badge_${guildRank.toLowerCase()}`,
+      name: `${guildRank}-Rank Guild Badge`,
+      category: 'key',
+      description: `${guildRank}-Rank Adventurer Guild seal issued by Solaris Kingdom.`,
+      sarcasticQuote: 'Officially laminated against slime, goblin blood, and demon fire.',
+      count: 1,
+      color: guildRank === 'S' ? '#fbbf24' : '#cbd5e1',
+    });
+  }
 
   const biome: BiomeId =
     obj.biome === 'castle' || obj.biome === 'volcano' || obj.biome === 'forest'
@@ -204,6 +271,17 @@ export function normalizeLoadedSave(raw: unknown): BasteraSaveData | null {
     darkSanctumDiscovered: Boolean(obj.darkSanctumDiscovered),
     bossFoughtStreak: Number.isFinite(obj.bossFoughtStreak) ? Math.max(0, Number(obj.bossFoughtStreak)) : 0,
     bossCooldownSeconds: Number.isFinite(obj.bossCooldownSeconds) ? Math.max(0, Number(obj.bossCooldownSeconds)) : 0,
+    realm,
+    guildRank,
+    unlockedWardrobe: Array.isArray(obj.unlockedWardrobe)
+      ? obj.unlockedWardrobe.filter((s): s is string => typeof s === 'string')
+      : ['outfit_knight_plate', 'hat_helm'],
+    foughtIsekaiEnemies: Array.isArray(obj.foughtIsekaiEnemies)
+      ? (obj.foughtIsekaiEnemies.filter((s): s is EnemyArchetype => typeof s === 'string') as EnemyArchetype[])
+      : [],
+    crownUnlocked: Boolean(obj.crownUnlocked),
+    gyroDefeated: Boolean(obj.gyroDefeated),
+    isekaiCompleted: Boolean(obj.isekaiCompleted),
   };
 }
 

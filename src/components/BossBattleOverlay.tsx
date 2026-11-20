@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { SKILLS, WEAPONS } from '../game/data';
 import type { AnimeExpression } from '../game/pixelArtAtlas';
-import type { BossBattleSnapshot, HudSnapshot, SkillId } from '../game/types';
+import type { BossBattleSnapshot, HudSnapshot, OrbId, SkillId } from '../game/types';
 import { PixelBossPortrait, PixelItemIcon, PixelWarriorPortrait } from './PixelPortrait';
 
 interface BossBattleOverlayProps {
@@ -10,6 +10,7 @@ interface BossBattleOverlayProps {
   onAttackWeapon: () => void;
   onUseSkill: (slot: 0 | 1 | 2) => void;
   onUsePotion: (itemId: string) => void;
+  onUseOrb: (orbId: OrbId) => void;
   onRetreat: () => void;
   onEscape: () => void;
   onOpenStatus: () => void;
@@ -23,6 +24,7 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
   onAttackWeapon,
   onUseSkill,
   onUsePotion,
+  onUseOrb,
   onRetreat,
   onEscape,
   onOpenStatus,
@@ -49,6 +51,36 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
 
   const weapon = WEAPONS[hud.equippedWeapon];
   const potions = hud.inventory.filter((item) => item.category === 'potion');
+  const orbMeta: { id: OrbId; shortName: string; tag: string; border: string; activeBg: string; tagColor: string }[] = [
+    {
+      id: 'orb_flame',
+      shortName: 'Flame Orb',
+      tag: '25% MAX HP',
+      border: 'border-orange-400',
+      activeBg: 'bg-[#361409] hover:bg-[#4d1d0d]',
+      tagColor: 'text-orange-300',
+    },
+    {
+      id: 'orb_wind',
+      shortName: 'Wind Orb',
+      tag: '+30% DMG',
+      border: 'border-teal-400',
+      activeBg: 'bg-[#092b28] hover:bg-[#0e3f3b]',
+      tagColor: 'text-teal-300',
+    },
+    {
+      id: 'orb_electric',
+      shortName: 'Electric Orb',
+      tag: 'STUN 1T',
+      border: 'border-yellow-300',
+      activeBg: 'bg-[#2f2506] hover:bg-[#44360a]',
+      tagColor: 'text-yellow-300',
+    },
+  ];
+  const orbs = orbMeta.map((meta) => ({
+    ...meta,
+    count: hud.inventory.find((item) => item.id === meta.id)?.count ?? 0,
+  }));
   const isMenuReady = battle.phase === 'menu';
   const bossExpression: AnimeExpression =
     battle.phase === 'enemy_anim'
@@ -76,12 +108,22 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
           <PixelBossPortrait
             bossIndex={battle.bossIndex}
             megaArchetype={battle.megaArchetype}
+            isGyroBoss={battle.isGyroBoss}
             expression={bossExpression}
             size={56}
           />
 
           <div className="flex-1 min-w-0">
-            {battle.isMegaBoss && (
+            {battle.isGyroBoss && (
+              <div
+                data-testid="gyro-boss-badge"
+                className="mb-1 px-1.5 py-0.5 bg-[#052e16] border border-emerald-300/90 font-pixel-mono text-[9px] font-bold tracking-wider text-emerald-200 flex items-center justify-between"
+              >
+                <span>✦ FINAL BOSS · LESSON 5</span>
+                <span className="text-yellow-300">3x HP · =ATK</span>
+              </div>
+            )}
+            {battle.isMegaBoss && !battle.isGyroBoss && (
               <div
                 data-testid="mega-boss-badge"
                 className="mb-1 px-1.5 py-0.5 bg-[#4c0519] border border-yellow-300/90 font-pixel-mono text-[9px] font-bold tracking-wider text-yellow-200 flex items-center justify-between"
@@ -95,15 +137,39 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
                 {battle.bossName}
               </span>
               <span className="font-pixel-mono text-[10px] text-amber-300 shrink-0">
-                {battle.isMegaBoss ? 'MEGA' : `Lv.${battle.bossIndex}`}
+                {battle.isGyroBoss ? 'FINAL' : battle.isMegaBoss ? 'MEGA' : `Lv.${battle.bossIndex}`}
               </span>
             </div>
-            <div className="flex items-center justify-between text-[10px] font-pixel-mono text-amber-200/80 mt-0.5">
+            <div className="flex items-center justify-between text-[10px] font-pixel-mono text-amber-200/80 mt-0.5 gap-1">
               <span className="truncate">Aura: {battle.standName}</span>
-              {battle.bossFrozenTurns > 0 && (
-                <span className="text-emerald-300 shrink-0 ml-1">[FROZEN]</span>
-              )}
+              <div className="flex items-center gap-1 shrink-0">
+                {battle.windVulnerable && (
+                  <span
+                    data-testid="boss-wind-vuln-badge"
+                    className="px-1 bg-teal-950 border border-teal-400/80 text-teal-200 text-[9px] font-bold"
+                  >
+                    +30% DMG
+                  </span>
+                )}
+                {battle.bossFrozenTurns > 0 && (
+                  <span
+                    data-testid="boss-stun-badge"
+                    className={`px-1 border text-[9px] font-bold ${
+                      battle.bossStunReason === 'electric'
+                        ? 'bg-yellow-950 border-yellow-300 text-yellow-200'
+                        : 'bg-emerald-950 border-emerald-400 text-emerald-200'
+                    }`}
+                  >
+                    {battle.bossStunReason === 'electric' ? 'STUNNED 1T' : 'FROZEN'}
+                  </span>
+                )}
+              </div>
             </div>
+            {battle.isGyroBoss && battle.gyroEmote && (
+              <div className="mt-0.5 px-1.5 py-0.5 bg-emerald-950/90 border border-emerald-400/70 font-pixel-mono text-[9px] text-emerald-200 truncate">
+                💬 &ldquo;{battle.gyroEmote}&rdquo;
+              </div>
+            )}
             <div className="flex items-center justify-between gap-2 text-[9px] font-pixel-mono text-sky-200/90 mt-0.5">
               <span className="truncate">{battle.climateLabel}</span>
               <span
@@ -238,6 +304,60 @@ export const BossBattleOverlay: React.FC<BossBattleOverlayProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Easily Visible Bossfight Elemental Orb Bar */}
+        <div
+          data-testid="boss-orb-bar"
+          className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 bg-[#120911]/95 border-2 border-amber-400/85 px-2.5 py-1.5 shadow-[0_3px_12px_rgba(0,0,0,0.85)]"
+        >
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="font-pixel-mono text-[10px] font-bold tracking-wider text-amber-300">
+              ✦ ELEMENTAL ORB BAR
+            </span>
+            <span className="hidden sm:inline font-pixel-mono text-[9px] text-amber-200/70">
+              (8% Monster Drop)
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 flex-1 max-w-[660px]">
+            {orbs.map((orb) => {
+              const disabled = !isMenuReady || orb.count <= 0;
+              return (
+                <button
+                  key={orb.id}
+                  type="button"
+                  tabIndex={-1}
+                  disabled={disabled}
+                  data-testid={`boss-orb-${orb.id}`}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onUseOrb(orb.id);
+                  }}
+                  title={`${orb.shortName}: ${orb.tag}`}
+                  className={`flex items-center justify-between gap-1.5 px-2 py-1 border text-left transition-colors cursor-pointer ${
+                    orb.count > 0
+                      ? `${orb.activeBg} ${orb.border} text-amber-50 disabled:opacity-55`
+                      : 'bg-[#170f15] border-amber-900/45 text-amber-200/45 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <PixelItemIcon itemId={orb.id} size={22} />
+                    <div className="min-w-0">
+                      <div className="font-pixel-mono text-[10px] font-bold truncate leading-tight">
+                        {orb.shortName}
+                      </div>
+                      <div className={`font-pixel-mono text-[9px] font-bold leading-tight ${orb.tagColor}`}>
+                        {orb.tag}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="font-pixel-mono text-[11px] font-bold text-amber-200 shrink-0">
+                    x{orb.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

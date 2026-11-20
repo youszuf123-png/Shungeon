@@ -51,6 +51,19 @@
   transform-origin: center center;
 }
 
+@keyframes bulletinScroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.guild-bulletin-marquee {
+  animation: bulletinScroll 16s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

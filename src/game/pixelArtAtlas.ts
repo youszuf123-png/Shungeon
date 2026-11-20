@@ -252,6 +252,65 @@ export function drawBossPortrait(
     return;
   }
 
+  if (def.isGyroBoss) {
+    // Gyro Zeppeli Bespoke Steel Ball Run Portrait: feathered gyro hat w/ emerald spheres, emerald goggles, blonde curls, goatee & gold tooth!
+    // Flowing golden curls behind collar
+    px(ctx, 8, 12, 32, 26, '#a16207');
+    px(ctx, 10, 14, 28, 22, '#ca8a04');
+    px(ctx, 5, 31, 38, 17, '#09060b');
+    px(ctx, 7, 32, 34, 16, '#581c87');
+    px(ctx, 11, 34, 26, 14, '#7e22ce');
+    // Holster straps & emerald steel ball emblem
+    px(ctx, 12, 36, 4, 12, '#78350f');
+    px(ctx, 32, 36, 4, 12, '#78350f');
+    px(ctx, 19, 39, 10, 9, '#15803d');
+    px(ctx, 21, 41, 6, 5, '#4ade80');
+    // Chiseled tanned face
+    px(ctx, 14, 13, 20, 21, '#09060b');
+    px(ctx, 15, 14, 18, 19, '#e7b98f');
+    px(ctx, 18, 32, 12, 5, '#e7b98f');
+    // Gyro's signature violet-brown feathered cowboy hat with emerald spheres around crown!
+    px(ctx, 4, 11, 40, 4, '#09060b');
+    px(ctx, 5, 12, 38, 2, '#581c87');
+    px(ctx, 10, 2, 28, 11, '#09060b');
+    px(ctx, 11, 3, 26, 9, '#6b21a8');
+    px(ctx, 12, 8, 24, 3, '#3b0764');
+    // Emerald hat spheres
+    px(ctx, 13, 8, 4, 4, '#22c55e');
+    px(ctx, 22, 8, 4, 4, '#4ade80');
+    px(ctx, 31, 8, 4, 4, '#22c55e');
+    // Emerald aviator goggles on hat brim
+    px(ctx, 14, 11, 8, 5, '#09060b');
+    px(ctx, 15, 12, 6, 3, '#10b981');
+    px(ctx, 26, 11, 8, 5, '#09060b');
+    px(ctx, 27, 12, 6, 3, '#10b981');
+    // Sharp eyes & confident grin + golden tooth
+    px(ctx, 16, 19, 5, 2, '#09060b');
+    px(ctx, 27, 19, 5, 2, '#09060b');
+    px(ctx, 17, 21, 4, 3, '#ffffff');
+    px(ctx, 18, 21, 2, 3, '#10b981');
+    px(ctx, 27, 21, 4, 3, '#ffffff');
+    px(ctx, 28, 21, 2, 3, '#10b981');
+    // Chin goatee squares + "GO! GO! ZEPPELI" golden tooth smile
+    px(ctx, 18, 28, 12, 4, '#09060b');
+    px(ctx, 19, 29, 10, 2, '#ffffff');
+    px(ctx, 21, 29, 2, 2, '#fde047'); // Gold tooth!
+    px(ctx, 25, 29, 2, 2, '#fde047');
+    px(ctx, 21, 33, 6, 3, '#09060b');
+    px(ctx, 19, 33, 2, 2, '#854d0e');
+    px(ctx, 27, 33, 2, 2, '#854d0e');
+    // Glowing green spinning Steel Ball beside portrait
+    px(ctx, 37, 24, 9, 9, '#15803d');
+    px(ctx, 38, 25, 7, 7, '#22c55e');
+    px(ctx, 40, 27, 3, 3, '#bbf7d0');
+
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, 47, 47);
+    ctx.restore();
+    return;
+  }
+
   const traits = getBossFacialTraits(def.index);
 
   // Chiseled JoJo Face Silhouette sculpted by per-boss JawShape
@@ -956,7 +1015,7 @@ export function getBakedJoJoBossSprite(
   pose: 'idle' | 'windup' | 'attack' | 'ko',
   battleSize: boolean,
 ): HTMLCanvasElement {
-  const key = `${def.index}_${def.megaArchetype ?? 'std'}_${pose}_${battleSize ? 'B' : 'C'}`;
+  const key = `${def.index}_${def.isGyroBoss ? 'gyro' : def.megaArchetype ?? 'std'}_${pose}_${battleSize ? 'B' : 'C'}`;
   const existing = bossSpriteCache.get(key);
   if (existing) return existing;
 
@@ -1408,6 +1467,26 @@ export function getBakedJoJoBossSprite(
     px(ctx, hx - 2, hy - 6, 20, 7, '#1e293b');
     px(ctx, hx - 4, hy - 12, 5, 7, '#fbbf24');
     px(ctx, hx + 15, hy - 12, 5, 7, '#fbbf24');
+  } else if (def.hatStyle === 'gyro_hat') {
+    // Gyro Zeppeli feathered purple-brown hat + golden curls + emerald orbs + green-flaming Steel Ball!
+    px(ctx, hx - 4, hy + 2, 5, 18, '#ca8a04'); // Blonde curls
+    px(ctx, hx + 15, hy + 2, 5, 18, '#a16207');
+    px(ctx, hx - 7, hy - 2, 30, 4, '#09060b'); // Wide cowboy brim
+    px(ctx, hx - 6, hy - 1, 28, 2, '#6b21a8');
+    px(ctx, hx - 1, hy - 13, 18, 12, '#09060b');
+    px(ctx, hx, hy - 12, 16, 10, '#7e22ce');
+    // Emerald orbs on Gyro hat band
+    px(ctx, hx + 1, hy - 5, 3, 3, '#22c55e');
+    px(ctx, hx + 7, hy - 5, 3, 3, '#4ade80');
+    px(ctx, hx + 12, hy - 5, 3, 3, '#22c55e');
+    // Spinning green flame Steel Ball held forward in hand!
+    const sbX = pose === 'attack' ? bx - 52 : bx - 34;
+    const sbY = pose === 'attack' ? by - 64 : by - 52;
+    px(ctx, sbX - 4, sbY - 4, 18, 18, '#15803d');
+    px(ctx, sbX - 2, sbY - 6, 14, 22, '#22c55e');
+    px(ctx, sbX, sbY, 10, 10, '#16a34a');
+    px(ctx, sbX + 2, sbY + 2, 6, 6, '#86efac');
+    px(ctx, sbX + 4, sbY + 4, 2, 2, '#fef08a');
   } else {
     px(ctx, hx - 2, hy - 6, 20, 10, pRamp.sh);
   }
@@ -1441,7 +1520,7 @@ export function getBakedWarriorBattleSprite(
   isSlashing: boolean,
   customization: WarriorCustomization = DEFAULT_WARRIOR_CUSTOMIZATION,
 ): HTMLCanvasElement {
-  const key = `${weaponId}_${isSlashing ? 'atk' : 'idle'}_${customization.cloakColor}_${customization.armorColor}_${customization.visorColor}_${customization.plumeColor}`;
+  const key = `${weaponId}_${isSlashing ? 'atk' : 'idle'}_${customization.cloakColor}_${customization.armorColor}_${customization.visorColor}_${customization.plumeColor}_${customization.outfitStyle ?? 'knight_plate'}_${customization.headgearStyle ?? 'helm'}_${customization.crownEquipped ? 'C' : 'N'}`;
   const cached = warriorBattleCache.get(key);
   if (cached) return cached;
   if (warriorBattleCache.size > 40) {
@@ -1532,6 +1611,16 @@ export function getBakedWarriorBattleSprite(
   px(ctx, bx - 5, by - 56, 8, 2, plumeRamp.hi);
   px(ctx, bx - 15, by - 54, 9, 4, plumeRamp.sh);
   px(ctx, bx - 19, by - 50, 7, 3, plumeRamp.base);
+
+  if (customization.crownEquipped) {
+    // Gleaming S-Rank Royal Sovereign Crown perched atop helm!
+    px(ctx, bx - 9, by - 59, 18, 5, '#09060b');
+    px(ctx, bx - 8, by - 58, 16, 4, '#f59e0b');
+    px(ctx, bx - 8, by - 62, 3, 4, '#fbbf24');
+    px(ctx, bx - 2, by - 64, 4, 6, '#fef08a');
+    px(ctx, bx + 5, by - 62, 3, 4, '#fbbf24');
+    px(ctx, bx - 1, by - 57, 2, 2, '#e11d48');
+  }
 
   // Equipped Weapon Blade + Gauntlet
   if (isSlashing) {
@@ -1662,6 +1751,61 @@ export function getBakedItemIcon(itemId: string): HTMLCanvasElement {
     px(ctx, 8, 14, 16, 3, '#f97316');
     px(ctx, 11, 13, 8, 5, '#fde047');
     px(ctx, 14, 14, 3, 3, '#ffffff');
+  } else if (itemId === 'orb_flame') {
+    // Blazing Crimson-Orange Flame Orb with white-hot solar core & rising sparks
+    px(ctx, 5, 5, 22, 22, '#09060b');
+    px(ctx, 6, 6, 20, 20, '#9a3412');
+    px(ctx, 8, 8, 16, 16, '#ea580c');
+    px(ctx, 9, 9, 14, 14, '#f97316');
+    px(ctx, 12, 10, 8, 11, '#fbbf24');
+    px(ctx, 14, 12, 5, 7, '#fef08a');
+    px(ctx, 15, 14, 3, 4, '#ffffff');
+    // Outer orbiting flame sparks
+    px(ctx, 5, 8, 3, 3, '#fb923c');
+    px(ctx, 24, 9, 3, 3, '#fde047');
+    px(ctx, 22, 23, 3, 3, '#ef4444');
+  } else if (itemId === 'orb_wind') {
+    // Emerald-Teal Swirling Gale Wind Orb
+    px(ctx, 5, 5, 22, 22, '#09060b');
+    px(ctx, 6, 6, 20, 20, '#0f766e');
+    px(ctx, 8, 8, 16, 16, '#14b8a6');
+    px(ctx, 9, 9, 14, 14, '#2dd4bf');
+    // Swirling wind ribbons inside sphere
+    px(ctx, 9, 11, 13, 3, '#ccfbf1');
+    px(ctx, 10, 15, 13, 3, '#99f6e4');
+    px(ctx, 12, 19, 9, 2, '#ffffff');
+    px(ctx, 11, 12, 3, 3, '#ffffff');
+    // Gust trail wisps
+    px(ctx, 4, 13, 4, 2, '#5eead4');
+    px(ctx, 24, 17, 4, 2, '#5eead4');
+  } else if (itemId === 'orb_electric') {
+    // High-Voltage Gold & Cyan Electrical Orb with crackling pixel lightning bolt
+    px(ctx, 5, 5, 22, 22, '#09060b');
+    px(ctx, 6, 6, 20, 20, '#a16207');
+    px(ctx, 8, 8, 16, 16, '#eab308');
+    px(ctx, 9, 9, 14, 14, '#facc15');
+    // Lightning bolt rune inside orb
+    px(ctx, 15, 9, 5, 3, '#ffffff');
+    px(ctx, 13, 12, 5, 3, '#fef9c3');
+    px(ctx, 12, 15, 8, 3, '#ffffff');
+    px(ctx, 15, 18, 5, 4, '#38bdf8');
+    // Electric cyan arc sparks
+    px(ctx, 4, 7, 3, 2, '#38bdf8');
+    px(ctx, 25, 8, 3, 2, '#7dd3fc');
+    px(ctx, 5, 22, 3, 2, '#38bdf8');
+    px(ctx, 24, 23, 3, 2, '#38bdf8');
+  } else if (itemId.startsWith('rank_badge_')) {
+    // Guild Rank Heraldic Badge
+    const rank = itemId.replace('rank_badge_', '');
+    const badgeColor =
+      rank === 'S' ? '#fbbf24' : rank === 'A' ? '#e11d48' : rank === 'B' ? '#a855f7' : rank === 'C' ? '#3b82f6' : '#94a3b8';
+    px(ctx, 5, 5, 22, 22, '#09060b');
+    px(ctx, 6, 6, 20, 20, badgeColor);
+    px(ctx, 9, 9, 14, 14, '#1e1b2e');
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(rank, 16, 20);
   } else {
     // Velvet Crest Relic (royal gold-trimmed crimson heraldic shield brooch)
     px(ctx, 6, 5, 20, 15, '#09060b');

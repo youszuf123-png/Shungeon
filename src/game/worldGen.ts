@@ -3,6 +3,7 @@ import {
   SARCASTIC_OBJECT_DIALOGUES,
   TOTAL_BOSSES,
   TOTAL_HIDDEN_PASSAGES,
+  createGyroZeppeliBossDef,
   getBiomeForBossIndex,
   getBossDef,
 } from './data';
@@ -579,7 +580,7 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
                 : 38;
     const hp = Math.round(baseHp * scaleFactor);
 
-    const names: Record<EnemyArchetype, string> = {
+    const names: Partial<Record<EnemyArchetype, string>> = {
       skeleton_guard:
         biome === 'castle'
           ? 'Royal Bone Sentinel'
@@ -621,7 +622,7 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
     enemies.push({
       id: `enemy_${chunkIndex}_${m}`,
       archetype: arch,
-      name: names[arch],
+      name: names[arch] ?? arch,
       x: ex,
       y: ey,
       vx: 0,
@@ -641,19 +642,21 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
     });
   }
 
-  // Boss in chunks 1..120+ (Boss #1 right at the end of Chunk 1!)
+  // Boss in chunks 1..120+ (Boss #1 right at the end of Chunk 1! Final Boss Gyro Zeppeli in Chunk 101 after Boss #100!)
   let boss: ActiveBoss | null = null;
   if (chunkIndex >= 1) {
-    const def = getBossDef(chunkIndex);
+    const def = chunkIndex === 101 ? createGyroZeppeliBossDef(115, 28) : getBossDef(chunkIndex);
     const bossX = startX + 520;
+    const bw = def.isGyroBoss ? 36 : 24;
+    const bh = def.isGyroBoss ? 52 : 36;
     boss = {
       def,
       x: bossX,
-      y: FLOOR_Y - 36,
+      y: FLOOR_Y - bh,
       vx: 0,
       vy: 0,
-      w: 24,
-      h: 36,
+      w: bw,
+      h: bh,
       hp: def.maxHp,
       maxHp: def.maxHp,
       facing: -1,

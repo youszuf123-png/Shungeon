@@ -1,5 +1,7 @@
 import {
   INITIAL_INVENTORY,
+  ORB_DROP_CHANCE,
+  ORB_IDS,
   SKILLS,
   TOTAL_HIDDEN_PASSAGES,
   WEAPONS,
@@ -8,6 +10,7 @@ import type {
   ActiveBoss,
   EnemyState,
   InventoryItem,
+  OrbId,
   Platform,
   PlayerState,
   SkillId,
@@ -458,6 +461,19 @@ export function addInventoryResource(
   if (found) {
     found.count += amount;
   }
+}
+
+export const FLAME_ORB_HP_RATIO = 0.25;
+export const WIND_ORB_DAMAGE_BONUS = 0.3;
+
+/**
+ * Every monster kill across Citadel and Isekai has an 8% chance to drop
+ * one of the three Elemental Orbs (Flame, Wind, or Electrical).
+ */
+export function rollMonsterOrbDrop(rng: () => number = Math.random): OrbId | null {
+  if (rng() >= ORB_DROP_CHANCE) return null;
+  const idx = Math.min(ORB_IDS.length - 1, Math.max(0, Math.floor(rng() * ORB_IDS.length)));
+  return ORB_IDS[idx];
 }
 
 export function clampSecretsCount(count: number): number {

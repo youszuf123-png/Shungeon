@@ -2,6 +2,7 @@ import type {
   BiomeId,
   BossDef,
   InventoryItem,
+  OrbId,
   SkillDef,
   SkillId,
   WeaponDef,
@@ -11,6 +12,8 @@ import type {
 export const TOTAL_BOSSES = 120;
 export const BOSSES_PER_BIOME = 40;
 export const TOTAL_HIDDEN_PASSAGES = 108;
+export const ORB_DROP_CHANCE = 0.08;
+export const ORB_IDS: OrbId[] = ['orb_flame', 'orb_wind', 'orb_electric'];
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   claymore: {
@@ -238,12 +241,44 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     color: '#d97706',
     maxHpBonus: 15,
   },
+  {
+    id: 'orb_flame',
+    name: 'Flame Orb',
+    category: 'orb',
+    description: 'Bossfight item: Deals 25% of the enemy total Max HP as blazing burst damage.',
+    sarcasticQuote: 'Bottled volcano fury—handles diplomatic immunity with fire.',
+    count: 0,
+    color: '#f97316',
+  },
+  {
+    id: 'orb_wind',
+    name: 'Wind Orb',
+    category: 'orb',
+    description: 'Bossfight item: Shrouds the boss in gales so they receive +30% extra damage.',
+    sarcasticQuote: 'Turns a smug Stand user into an aerodynamic target.',
+    count: 0,
+    color: '#2dd4bf',
+  },
+  {
+    id: 'orb_electric',
+    name: 'Electrical Orb',
+    category: 'orb',
+    description: 'Bossfight item: Unleashes high-voltage shockwaves, stunning the boss for 1 turn.',
+    sarcasticQuote: 'Even time-stoppers skip a beat at ten thousand volts.',
+    count: 0,
+    color: '#facc15',
+  },
 ];
 
 export function getBiomeForBossIndex(bossNumber: number): BiomeId {
   if (bossNumber <= BOSSES_PER_BIOME) return 'castle';
   if (bossNumber <= BOSSES_PER_BIOME * 2) return 'volcano';
   return 'forest';
+}
+
+export function getBossDifficultyMultiplier(bossNumber: number): number {
+  const tier = Math.floor((Math.max(1, bossNumber) - 1) / 10);
+  return Number((1 + tier * 0.4).toFixed(2));
 }
 
 export function getBiomeDisplayName(biome: BiomeId): string {
@@ -547,6 +582,8 @@ export function getBossDef(bossIndex: number): BossDef {
         : ['Hellfire Tyrant', 'Calamity King', 'Obsidian Archon', 'Magma Requiem'];
   const epithet = bossTitles[(zero + Math.floor(zero / 4)) % bossTitles.length];
 
+  const diffMult = getBossDifficultyMultiplier(safeIndex);
+
   return {
     index: safeIndex,
     name,
@@ -558,7 +595,8 @@ export function getBossDef(bossIndex: number): BossDef {
     climateSkyTop: hslHex(hue, 45, 7),
     climateSkyBottom: hslHex(hue + 18, 52, 18),
     climateParticleColor: climateBase.particle,
-    maxHp: Math.round(115 + zero * 14),
+    maxHp: Math.round((115 + zero * 14) * diffMult),
+    difficultyMultiplier: diffMult,
     primaryColor,
     secondaryColor,
     auraColor,
@@ -580,6 +618,88 @@ export function getBossDef(bossIndex: number): BossDef {
       leadWave: waves[zero % waves.length],
       bassPattern: [0, 0, 7, 0, 5, 3, 2, 0].map((v, i) => (v + ((zero + i) % 3)) % 8),
       motifSeed: safeIndex * 97 + 13,
+    },
+  };
+}
+
+export const GYRO_EMOTES = [
+  '*Tips feathered brimmed hat* "Nyo-ho~! Ready for Lesson 5, knight?"',
+  '*Spins emerald Steel Ball on fingertip* "Look closely at the Golden Rectangle!"',
+  '*Flashes GO! GO! ZEPPELI gold teeth grin* "Pizza Mozzarella~ rella rella!"',
+  '*Snaps leather holster cape* "The shortest route was always a detour!"',
+];
+
+export function createGyroZeppeliBossDef(
+  playerMaxHp: number,
+  playerAttack: number,
+): BossDef {
+  const targetHp = Math.max(300, Math.round(playerMaxHp * 3));
+  const exactAtk = Math.max(1, Math.round(playerAttack));
+  return {
+    index: 101,
+    name: 'Gyro Zeppeli',
+    title: 'FINAL BOSS · MASTER OF THE GOLDEN SPIN',
+    standName: 'BALL BREAKER',
+    biome: 'forest',
+    climate: 'emerald_monsoon',
+    climateLabel: 'Golden Spin Tempest · Floor 101',
+    climateSkyTop: '#031912',
+    climateSkyBottom: '#0b3d28',
+    climateParticleColor: '#4ade80',
+    maxHp: targetHp,
+    difficultyMultiplier: getBossDifficultyMultiplier(101),
+    primaryColor: '#4c1d95',
+    secondaryColor: '#22c55e',
+    auraColor: '#4ade80',
+    skinColor: '#fed7aa',
+    isGyroBoss: true,
+    gyroAttackDamage: exactAtk,
+    emotes: [...GYRO_EMOTES],
+    megaSkills: [
+      {
+        id: 'gyro_emerald_spin',
+        name: 'Emerald Flame Steel Ball',
+        animStyle: 'gyro_green_ball',
+        palette: ['#22c55e', '#86efac', '#fde047'],
+        damageMult: 1,
+        shout: 'Nyo-ho! Feel the green-flaming Steel Ball spin right through your guard!',
+      },
+      {
+        id: 'gyro_scan_throw',
+        name: 'Scan Vortex Gyro Throw',
+        animStyle: 'gyro_green_ball',
+        palette: ['#16a34a', '#4ade80', '#ffffff'],
+        damageMult: 1,
+        shout: 'Lesson 4! Spinning emerald flames lock onto every heartbeat!',
+      },
+      {
+        id: 'gyro_ball_breaker',
+        name: 'Ball Breaker · Golden Ratio',
+        animStyle: 'gyro_green_ball',
+        palette: ['#15803d', '#bef264', '#facc15'],
+        damageMult: 1,
+        shout: 'LESSON 5! Ball Breaker unleashes infinite emerald flame rotation!',
+      },
+    ],
+    hatStyle: 'gyro_hat',
+    coatStyle: 'trench',
+    standShape: 'sovereign',
+    emblem: 'star',
+    scaleFactor: 2.35,
+    voiceLine:
+      'Nyo-ho~! You cleared 100 Citadel Bosses! Now face Gyro Zeppeli and the Golden Spin!',
+    battleShout: 'NYO-HO! GREEN-FLAMING STEEL BALL — SPIN ON!',
+    defeatLine:
+      'Arigato, knight... The portal to a bright new world awaits beyond the Spin!',
+    attackPattern: 'gyro_spin',
+    attackName: 'Emerald Flame Steel Ball',
+    music: {
+      bpm: 156,
+      rootHz: 146.83,
+      scale: [0, 2, 4, 6, 7, 9, 11],
+      leadWave: 'sawtooth',
+      bassPattern: [0, 0, 5, 7, 4, 2, 0, 7],
+      motifSeed: 7777,
     },
   };
 }

@@ -402,6 +402,58 @@ export function drawInteractables(
     } else if (p.kind === 'escape_gate') {
       pRect(ctx, sx, p.y, p.w, p.h, '#f59e0b');
       pRect(ctx, sx + 4, p.y + 4, p.w - 8, p.h - 4, '#fef08a');
+    } else if (p.kind === 'isekai_portal') {
+      // Dimensional Golden Spin Isekai Portal swirling with emerald & azure energy!
+      const pulse = Math.sin(time * 6) * 3;
+      ctx.save();
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(sx + p.w / 2, p.y + p.h / 2, p.w / 2 + 8 + pulse, p.h / 2 + 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(sx + p.w / 2, p.y + p.h / 2, p.w / 2 + 2, p.h / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#4ade80';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(sx + p.w / 2, p.y + p.h / 2, p.w / 3, p.h / 2 - 6, time * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      pRect(ctx, sx + p.w / 2 - 4, p.y + p.h / 2 - 6, 8, 12, '#fef08a');
+      ctx.restore();
+    } else if (p.kind === 'guild_door' || p.kind === 'wardrobe_door' || p.kind === 'town_exit_door') {
+      const frameCol = p.kind === 'guild_door' ? '#b45309' : p.kind === 'wardrobe_door' ? '#db2777' : '#0ea5e9';
+      pRect(ctx, sx - 2, p.y - 2, p.w + 4, p.h + 2, '#1c1008');
+      pRect(ctx, sx, p.y, p.w, p.h, '#451a03');
+      pRect(ctx, sx + 3, p.y + 3, p.w - 6, p.h - 3, '#78350f');
+      pRect(ctx, sx + 4, p.y + 6, p.w - 8, 3, frameCol);
+      pRect(ctx, sx + p.w - 8, p.y + Math.floor(p.h * 0.55), 3, 3, '#fde047');
+    } else if (p.kind === 'guild_bar') {
+      // Tavern Oak Counter + Ale Kegs
+      pRect(ctx, sx, p.y + 8, p.w, p.h - 8, '#3f1d0b');
+      pRect(ctx, sx - 2, p.y + 6, p.w + 4, 4, '#92400e');
+      pRect(ctx, sx + 10, p.y - 2, 12, 10, '#78350f'); // Ale Barrel
+      pRect(ctx, sx + 10, p.y + 2, 12, 2, '#94a3b8');
+      pRect(ctx, sx + 34, p.y + 1, 6, 6, '#fbbf24'); // Frothy Tankard
+    } else if (p.kind === 'guild_reception') {
+      pRect(ctx, sx, p.y + 6, p.w, p.h - 6, '#451a03');
+      pRect(ctx, sx - 2, p.y + 4, p.w + 4, 4, '#b45309');
+      pRect(ctx, sx + 8, p.y - 1, 14, 5, '#fef3c7'); // Quest Parchments
+      pRect(ctx, sx + 26, p.y - 4, 8, 8, '#38bdf8'); // Guild Bell / Crystal
+    } else if (p.kind === 'wardrobe_counter') {
+      pRect(ctx, sx, p.y + 6, p.w, p.h - 6, '#500724');
+      pRect(ctx, sx - 2, p.y + 4, p.w + 4, 4, '#ec4899');
+      pRect(ctx, sx + 8, p.y - 4, 12, 8, '#f472b6'); // Folded silk bolts
+      pRect(ctx, sx + 24, p.y - 2, 10, 6, '#fbbf24');
+    } else if (p.kind === 'bulletin_board') {
+      pRect(ctx, sx + 3, p.y + 4, 3, p.h - 4, '#78350f');
+      pRect(ctx, sx + p.w - 6, p.y + 4, 3, p.h - 4, '#78350f');
+      pRect(ctx, sx, p.y, p.w, p.h - 10, '#451a03');
+      pRect(ctx, sx + 2, p.y + 2, p.w - 4, p.h - 14, '#b45309');
+      pRect(ctx, sx + 5, p.y + 5, 8, 9, '#fef3c7');
+      pRect(ctx, sx + 16, p.y + 6, 9, 8, '#fde68a');
+      pRect(ctx, sx + 28, p.y + 5, 7, 10, '#fecaca');
     }
   }
 
@@ -498,10 +550,35 @@ export function drawWarrior(
   pRect(ctx, 1 - stride, -3, 6, 3, '#1e293b');
   pRect(ctx, 4 - stride, -2, 3, 1, armorHi);
 
-  // Sculpted knight cuirass, diagonal leather baldric + pauldron + royal belt
+  // Outfit variation for Wardrobe Shop styles!
+  const outfitStyle = customization.outfitStyle ?? 'knight_plate';
+  const headgearStyle = customization.headgearStyle ?? 'helm';
+
+  // Sculpted knight cuirass / adventurer tunic / crimson guild coat / demon slayer / royal regalia
   pRect(ctx, -6, -19 + breath, 12, 12, armorMain);
-  pRect(ctx, -5, -18 + breath, 5, 6, armorHi);
-  pRect(ctx, 0, -18 + breath, 5, 7, armorMid);
+  if (outfitStyle === 'adventurer_tunic') {
+    pRect(ctx, -6, -19 + breath, 12, 13, '#15803d');
+    pRect(ctx, -4, -18 + breath, 8, 10, '#166534');
+    pRect(ctx, -1, -18 + breath, 3, 12, '#fef3c7');
+  } else if (outfitStyle === 'guild_coat') {
+    pRect(ctx, -6, -19 + breath, 12, 13, '#7f1d1d');
+    pRect(ctx, -5, -18 + breath, 10, 11, '#991b1b');
+    pRect(ctx, -2, -18 + breath, 4, 11, '#fef3c7');
+    pRect(ctx, -1, -16 + breath, 2, 4, '#fbbf24');
+  } else if (outfitStyle === 'demon_slayer') {
+    pRect(ctx, -6, -19 + breath, 12, 13, '#3b0764');
+    pRect(ctx, -5, -18 + breath, 5, 11, '#7e22ce');
+    pRect(ctx, 0, -18 + breath, 5, 11, '#1e1b4b');
+    pRect(ctx, -2, -14 + breath, 4, 3, '#f43f5e');
+  } else if (outfitStyle === 'royal_regalia') {
+    pRect(ctx, -6, -19 + breath, 12, 13, '#e2e8f0');
+    pRect(ctx, -5, -18 + breath, 10, 11, '#f8fafc');
+    pRect(ctx, -2, -18 + breath, 4, 11, '#9f1239');
+    pRect(ctx, -2, -16 + breath, 4, 3, '#fbbf24');
+  } else {
+    pRect(ctx, -5, -18 + breath, 5, 6, armorHi);
+    pRect(ctx, 0, -18 + breath, 5, 7, armorMid);
+  }
   pRect(ctx, -4, -18 + breath, 2, 2, '#78350f');
   pRect(ctx, -2, -16 + breath, 2, 2, '#78350f');
   pRect(ctx, 0, -14 + breath, 2, 2, '#78350f');
@@ -512,19 +589,47 @@ export function drawWarrior(
   pRect(ctx, -6, -10 + breath, 12, 2, '#b45309');
   pRect(ctx, -1, -10 + breath, 3, 2, '#fef08a');
 
-  // Visored Armet helm with gold fillet, breathing slots, custom visor glow & sweeping plume
-  pRect(ctx, -6, -28 + breath, 12, 9, armorMain);
-  pRect(ctx, -5, -28 + breath, 9, 2, armorHi);
-  pRect(ctx, -6, -26 + breath, 12, 1, '#d97706');
-  pRect(ctx, -5, -26 + breath, 2, 7, armorMid);
-  pRect(ctx, -1, -24 + breath, 7, 3, '#0f172a');
-  pRect(ctx, 1, -23 + breath, 3, 2, isAnimePose ? '#fef08a' : visorGlow);
-  pRect(ctx, 2, -23 + breath, 1, 1, '#ffffff');
-  pRect(ctx, 2, -20 + breath, 1, 1, '#090609');
-  pRect(ctx, 4, -20 + breath, 1, 1, '#090609');
-  pRect(ctx, -5, -33 + breath, 8, 5, '#090609');
-  pRect(ctx, -4, -32 + breath, 6, 4, plumeColor);
-  pRect(ctx, -9 - Math.round(cloakWave1 * 0.5), -31 + breath, 6, 3, plumeShade);
+  // Headgear (Helm / Beret / Bandana / Circlet) + Royal Crown!
+  if (headgearStyle === 'beret') {
+    pRect(ctx, -6, -27 + breath, 11, 8, '#f3cba5');
+    pRect(ctx, 1, -24 + breath, 2, 2, '#0f172a');
+    pRect(ctx, -7, -32 + breath, 13, 5, capeColor);
+    pRect(ctx, -5, -33 + breath, 8, 2, '#fde047');
+  } else if (headgearStyle === 'bandana') {
+    pRect(ctx, -6, -27 + breath, 11, 8, '#f3cba5');
+    pRect(ctx, 1, -24 + breath, 2, 2, '#0f172a');
+    pRect(ctx, -6, -29 + breath, 12, 3, '#dc2626');
+    pRect(ctx, -10 - Math.round(cloakWave1 * 0.4), -29 + breath, 5, 2, '#ef4444');
+  } else if (headgearStyle === 'circlet') {
+    pRect(ctx, -6, -27 + breath, 11, 8, '#f3cba5');
+    pRect(ctx, -6, -29 + breath, 11, 3, '#334155');
+    pRect(ctx, 1, -24 + breath, 2, 2, visorGlow);
+    pRect(ctx, -6, -28 + breath, 12, 2, '#fbbf24');
+    pRect(ctx, 0, -29 + breath, 2, 2, '#38bdf8');
+  } else {
+    pRect(ctx, -6, -28 + breath, 12, 9, armorMain);
+    pRect(ctx, -5, -28 + breath, 9, 2, armorHi);
+    pRect(ctx, -6, -26 + breath, 12, 1, '#d97706');
+    pRect(ctx, -5, -26 + breath, 2, 7, armorMid);
+    pRect(ctx, -1, -24 + breath, 7, 3, '#0f172a');
+    pRect(ctx, 1, -23 + breath, 3, 2, isAnimePose ? '#fef08a' : visorGlow);
+    pRect(ctx, 2, -23 + breath, 1, 1, '#ffffff');
+    pRect(ctx, 2, -20 + breath, 1, 1, '#090609');
+    pRect(ctx, 4, -20 + breath, 1, 1, '#090609');
+    pRect(ctx, -5, -33 + breath, 8, 5, '#090609');
+    pRect(ctx, -4, -32 + breath, 6, 4, plumeColor);
+    pRect(ctx, -9 - Math.round(cloakWave1 * 0.5), -31 + breath, 6, 3, plumeShade);
+  }
+
+  if (customization.crownEquipped) {
+    // Glowing S-Rank Sovereign Royal Crown!
+    const cy = headgearStyle === 'helm' ? -36 : -34;
+    pRect(ctx, -5, cy + breath, 10, 4, '#f59e0b');
+    pRect(ctx, -5, cy - 3 + breath, 2, 3, '#fbbf24');
+    pRect(ctx, -1, cy - 4 + breath, 3, 4, '#fef08a');
+    pRect(ctx, 3, cy - 3 + breath, 2, 3, '#fbbf24');
+    pRect(ctx, 0, cy + 1 + breath, 2, 2, '#e11d48');
+  }
 
   // Detailed 6-style sword blades & multi-layered anime slash arc (including OP Fire Sword!)
   const weapon = WEAPONS[weaponId];
@@ -762,6 +867,96 @@ export function drawEnemy(
     pRect(ctx, 2, -25 + hover, 1, 1, '#fde047');
     pRect(ctx, -1, -32 + hover, 2, 5, '#f97316');
     pRect(ctx, -1, -34 + hover, 2, 3, '#fef08a');
+  } else if (enemy.archetype === 'goblin_normal') {
+    const skin = flash ? '#ffffff' : windupPulse ? '#fef08a' : '#65a30d';
+    pRect(ctx, -5, -21 + idleBob, 10, 9, '#09060b');
+    pRect(ctx, -4, -20 + idleBob, 8, 7, skin);
+    pRect(ctx, -9, -18 + idleBob, 5, 3, '#84cc16'); // Pointed goblin ears
+    pRect(ctx, 4, -18 + idleBob, 5, 3, '#84cc16');
+    pRect(ctx, 1, -17 + idleBob, 2, 2, '#ef4444');
+    pRect(ctx, -5, -12 + idleBob, 10, 7, '#78350f'); // Tattered hide tunic
+    pRect(ctx, -4 + stride, -5, 3, 5, '#4d7c0f');
+    pRect(ctx, 1 - stride, -5, 3, 5, '#4d7c0f');
+    pRect(ctx, 4, -13 + idleBob, 8, 2, '#cbd5e1'); // Crooked rusty knife
+  } else if (enemy.archetype === 'hobgoblin') {
+    const skin = flash ? '#ffffff' : windupPulse ? '#fb923c' : '#b45309';
+    pRect(ctx, -8, -28 + idleBob, 16, 20, '#09060b');
+    pRect(ctx, -7, -27 + idleBob, 14, 17, skin);
+    pRect(ctx, -11, -24 + idleBob, 4, 4, '#d97706'); // Wide goblin ears
+    pRect(ctx, 7, -24 + idleBob, 4, 4, '#d97706');
+    pRect(ctx, 1, -24 + idleBob, 3, 2, '#fde047'); // Fierce amber eyes
+    pRect(ctx, 2, -21 + idleBob, 2, 2, '#ffffff'); // Tusks
+    pRect(ctx, -7, -17 + idleBob, 14, 9, '#44403c'); // Iron chestplate
+    pRect(ctx, -6 + stride, -8, 5, 8, '#78350f');
+    pRect(ctx, 2 - stride, -8, 5, 8, '#78350f');
+    // Massive spiked iron club!
+    pRect(ctx, 6, -24 + idleBob, 5, 16, '#57534e');
+    pRect(ctx, 5, -24 + idleBob, 7, 3, '#e2e8f0');
+  } else if (enemy.archetype === 'bandit_fighter') {
+    const coat = flash ? '#ffffff' : windupPulse ? '#fde047' : '#991b1b';
+    pRect(ctx, -6, -26 + idleBob, 12, 19, '#09060b');
+    pRect(ctx, -5, -25 + idleBob, 10, 7, '#e7b98f');
+    pRect(ctx, -6, -26 + idleBob, 12, 3, '#dc2626'); // Red brigand bandana
+    pRect(ctx, 1, -22 + idleBob, 3, 2, '#09060b');
+    pRect(ctx, -5, -18 + idleBob, 10, 11, coat);
+    pRect(ctx, -4 + stride, -7, 3, 7, '#1e293b');
+    pRect(ctx, 2 - stride, -7, 3, 7, '#1e293b');
+    pRect(ctx, 4, -18 + idleBob, 11, 3, '#e2e8f0'); // Cutlass
+  } else if (enemy.archetype === 'bandit_archer') {
+    const cloak = flash ? '#ffffff' : windupPulse ? '#fde047' : '#14532d';
+    pRect(ctx, -6, -26 + idleBob, 12, 19, '#09060b');
+    pRect(ctx, -5, -26 + idleBob, 10, 8, cloak); // Ranger hood
+    pRect(ctx, 0, -23 + idleBob, 4, 4, '#e7b98f');
+    pRect(ctx, 2, -22 + idleBob, 2, 1, '#09060b');
+    pRect(ctx, -5, -18 + idleBob, 10, 11, '#3f6212');
+    pRect(ctx, -4 + stride, -7, 3, 7, '#292524');
+    pRect(ctx, 2 - stride, -7, 3, 7, '#292524');
+    // Curved oak longbow
+    pRect(ctx, 6, -24 + idleBob, 2, 16, '#92400e');
+    pRect(ctx, 5, -22 + idleBob, 1, 12, '#e2e8f0');
+  } else if (enemy.archetype === 'demon_succubus') {
+    const hover = Math.round(Math.sin(time * 5 + enemy.patrolOriginX) * 3);
+    const body = flash ? '#ffffff' : windupPulse ? '#f472b6' : '#be123c';
+    const wing = Math.round(Math.sin(time * 12) * 3);
+    // Bat wings
+    pRect(ctx, -13, -24 + hover + wing, 7, 10, '#4c0519');
+    pRect(ctx, 6, -24 + hover - wing, 7, 10, '#4c0519');
+    // Horns & silver-violet locks
+    pRect(ctx, -4, -30 + hover, 2, 5, '#09060b');
+    pRect(ctx, 2, -30 + hover, 2, 5, '#09060b');
+    pRect(ctx, -5, -26 + hover, 10, 9, '#a855f7');
+    pRect(ctx, -3, -24 + hover, 6, 6, '#f5d0fe');
+    pRect(ctx, 1, -22 + hover, 2, 2, '#f43f5e');
+    pRect(ctx, -4, -17 + hover, 8, 12, body);
+    pRect(ctx, -3, -5 + hover, 2, 5, '#4c0519');
+    pRect(ctx, 1, -5 + hover, 2, 5, '#4c0519');
+    pRect(ctx, 6, -16 + hover, 4, 4, '#f43f5e'); // Heart orb!
+  } else if (enemy.archetype === 'demon_tank') {
+    const armor = flash ? '#ffffff' : windupPulse ? '#ef4444' : '#312e81';
+    pRect(ctx, -11, -34 + idleBob, 22, 26, '#09060b');
+    pRect(ctx, -10, -26 + idleBob, 20, 18, armor);
+    pRect(ctx, -6, -34 + idleBob, 12, 9, '#1e1b4b');
+    pRect(ctx, -9, -39 + idleBob, 3, 7, '#cbd5e1'); // Giant horns
+    pRect(ctx, 6, -39 + idleBob, 3, 7, '#cbd5e1');
+    pRect(ctx, -3, -30 + idleBob, 6, 3, '#ef4444'); // Glowing red eyes
+    pRect(ctx, -3, -21 + idleBob, 6, 6, '#dc2626'); // Demonic core
+    pRect(ctx, -8 + stride, -8, 6, 8, '#1e1b4b');
+    pRect(ctx, 2 - stride, -8, 6, 8, '#1e1b4b');
+    pRect(ctx, 7, -23 + idleBob, 7, 13, '#4c1d95'); // Heavy shield gauntlet
+  } else if (enemy.archetype === 'demon_lightning') {
+    const body = flash ? '#ffffff' : windupPulse ? '#fef08a' : '#7e22ce';
+    pRect(ctx, -6, -27 + idleBob, 12, 19, '#09060b');
+    pRect(ctx, -5, -26 + idleBob, 10, 7, body);
+    pRect(ctx, -7, -30 + idleBob, 3, 5, '#fde047'); // Lightning horns
+    pRect(ctx, 4, -30 + idleBob, 3, 5, '#fde047');
+    pRect(ctx, 0, -23 + idleBob, 4, 2, '#fef08a');
+    pRect(ctx, -5, -19 + idleBob, 10, 12, '#4c1d95');
+    pRect(ctx, -4 + stride, -7, 3, 7, '#1e1b4b');
+    pRect(ctx, 1 - stride, -7, 3, 7, '#1e1b4b');
+    // Crackling lightning blade in hand
+    const zap = Math.round(Math.sin(time * 24) * 2);
+    pRect(ctx, 5, -18 + idleBob + zap, 11, 2, '#fde047');
+    pRect(ctx, 8, -16 + idleBob - zap, 7, 2, '#ffffff');
   } else {
     const col = flash ? '#ffffff' : windupPulse ? '#fb923c' : '#57534e';
     const wingLift = enemy.state === 'attack' || enemy.state === 'windup' ? -4 : 0;
@@ -832,14 +1027,15 @@ export function drawJoJoBoss(
       ctx.drawImage(sprite, Math.round(sx - 34), Math.round(sy - 78 + floatBob));
     }
   } else {
-    // Corridor Boss: 62x64 crisp native sprite (boots at y=61) facing player cleanly
-    ctx.translate(sx + 12, sy + 36);
-    ctx.scale(-boss.facing, 1);
-    ctx.drawImage(sprite, -24, -61 + floatBob);
+    // Corridor Boss: 62x64 crisp native sprite (boots at y=61) facing player cleanly, scaled huge for Gyro Zeppeli!
+    const corridorScale = def.isGyroBoss ? 1.45 : 1;
+    ctx.translate(Math.round(sx + boss.w / 2), Math.round(sy + boss.h));
+    ctx.scale(-boss.facing * corridorScale, corridorScale);
+    ctx.drawImage(sprite, -31, -61 + floatBob);
     if (boss.hitFlash > 0) {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.45;
-      ctx.drawImage(sprite, -24, -61 + floatBob);
+      ctx.drawImage(sprite, -31, -61 + floatBob);
     }
   }
   ctx.restore();
@@ -876,6 +1072,42 @@ export function drawProjectiles(
     if (pr.kind === 'knife') {
       pRect(ctx, sx - 6, sy - 1, 12, 2, '#e2e8f0');
       pRect(ctx, sx - 6, sy - 2, 3, 4, '#f59e0b');
+    } else if (pr.kind === 'arrow') {
+      const dir = pr.vx >= 0 ? 1 : -1;
+      pRect(ctx, sx - 7, sy - 1, 14, 2, '#92400e');
+      pRect(ctx, sx + dir * 5, sy - 2, 3, 4, '#e2e8f0');
+      pRect(ctx, sx - dir * 7, sy - 2, 3, 4, '#ef4444');
+    } else if (pr.kind === 'gyro_ball') {
+      // Spinning green Steel Ball wreathed in blazing emerald flames!
+      const spin = (Date.now() * 0.025) % (Math.PI * 2);
+      ctx.save();
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.35)';
+      ctx.beginPath();
+      ctx.arc(sx, sy, pr.radius + 5, 0, Math.PI * 2);
+      ctx.fill();
+      pRect(ctx, sx - 6, sy - 6, 12, 12, '#15803d');
+      pRect(ctx, sx - 4, sy - 4, 8, 8, '#22c55e');
+      pRect(ctx, sx + Math.cos(spin) * 3 - 1, sy + Math.sin(spin) * 3 - 1, 3, 3, '#fef08a');
+      ctx.restore();
+    } else if (pr.kind === 'succubus_orb') {
+      pRect(ctx, sx - 4, sy - 4, 8, 8, '#f43f5e');
+      pRect(ctx, sx - 2, sy - 2, 4, 4, '#fbcfe8');
+    } else if (pr.kind === 'purple_flame' || pr.kind === 'purple_meteor') {
+      const r = pr.kind === 'purple_meteor' ? 9 : 6;
+      ctx.save();
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.35)';
+      ctx.beginPath();
+      ctx.arc(sx, sy, r + 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#9333ea';
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f0abfc';
+      ctx.beginPath();
+      ctx.arc(sx, sy, r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     } else if (pr.kind === 'slash_wave') {
       pRect(ctx, sx - 5, sy - 11, 10, 22, pr.color);
       pRect(ctx, sx - 2, sy - 9, 4, 18, '#ffffff');
@@ -1133,6 +1365,87 @@ function drawBattleSlashFx(
     ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('ORA ORA!', cx, cy - 26);
+  } else if (fx.style === 'gyro_green_ball') {
+    // Gyro Zeppeli throws a spinning green Steel Ball wreathed in blazing emerald flames!
+    const t = Math.min(1, p * 1.25);
+    const bx = Math.round(cx + 80 - t * 88);
+    const by = Math.round(cy - 16 + Math.sin(p * Math.PI) * -12);
+    const spin = p * 22;
+    // Green flame trail
+    for (let f = 0; f < 6; f++) {
+      const fxPos = bx + 6 + f * 9;
+      const fyPos = by + Math.round(Math.sin(p * 30 + f) * 5);
+      pRect(ctx, fxPos, fyPos - 5, 8, 10, f % 2 === 0 ? '#15803d' : '#22c55e');
+      pRect(ctx, fxPos + 2, fyPos - 2, 4, 4, '#86efac');
+    }
+    // Blazing green flame aura & spinning Steel Ball core
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.35)';
+    ctx.beginPath();
+    ctx.arc(bx, by, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#15803d';
+    ctx.beginPath();
+    ctx.arc(bx, by, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.arc(bx, by, 9, 0, Math.PI * 2);
+    ctx.fill();
+    // Golden Spin crosshair spheres on ball
+    pRect(ctx, bx + Math.cos(spin) * 5 - 2, by + Math.sin(spin) * 5 - 2, 4, 4, '#fef08a');
+    pRect(ctx, bx - Math.cos(spin) * 5 - 2, by - Math.sin(spin) * 5 - 2, 4, 4, '#bbf7d0');
+    ctx.fillStyle = '#86efac';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('NYO HO!!', bx, by - 22);
+  } else if (fx.style === 'orb_flame') {
+    const r = 10 + Math.round(p * 34);
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.35)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + p * 5;
+      const fxPos = cx + Math.cos(ang) * r * 0.72;
+      const fyPos = cy + Math.sin(ang) * r * 0.72;
+      pRect(ctx, fxPos - 4, fyPos - 4, 8, 8, i % 2 === 0 ? '#f97316' : '#fde047');
+    }
+    pRect(ctx, cx - 7, cy - 7, 14, 14, '#fef08a');
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('-25% MAX HP!', cx, cy - 28);
+  } else if (fx.style === 'orb_wind') {
+    for (let ring = 0; ring < 3; ring++) {
+      const rx = 18 + ring * 10 + Math.round(Math.sin(p * Math.PI) * 12);
+      ctx.strokeStyle = ring % 2 === 0 ? '#2dd4bf' : '#ccfbf1';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + (ring - 1) * 10, rx, Math.round(rx * 0.35), p * 4 + ring, 0, Math.PI * 1.65);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#5eead4';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('+30% DMG VULN!', cx, cy - 28);
+  } else if (fx.style === 'orb_electric') {
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 3;
+    for (let b = -1; b <= 1; b++) {
+      ctx.beginPath();
+      ctx.moveTo(cx + b * 14, cy - 48);
+      ctx.lineTo(cx + b * 8 - 8, cy - 16);
+      ctx.lineTo(cx + b * 10 + 9, cy + 4);
+      ctx.lineTo(cx + b * 6, cy + 28);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - 24, cy - 28, 48, 56);
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('STUNNED 1T!', cx, cy - 32);
   } else {
     [-12, 0, 12].forEach((offset, idx) => {
       const start = idx * 0.1;
@@ -1156,6 +1469,7 @@ export function drawPokemonBossStage(
   guardActive: boolean,
   frozenTurns: number,
   time: number,
+  windVulnerable = false,
 ) {
   const def = boss.def;
   // 1. Unique Per-Boss Climate Sky (cached offscreen per boss index)
@@ -1305,6 +1619,17 @@ export function drawPokemonBossStage(
     hitFlash: phase === 'player_anim' && slashFx && slashFx.progress > 0.2 && slashFx.progress < 0.65 ? 0.1 : 0,
   };
   drawJoJoBoss(ctx, pseudoBoss, 0, time, frozenTurns > 0, bossStageScale);
+  if (windVulnerable) {
+    ctx.save();
+    ctx.strokeStyle = '#2dd4bf';
+    ctx.globalAlpha = 0.72;
+    ctx.lineWidth = 2;
+    const spin = time * 4;
+    ctx.beginPath();
+    ctx.ellipse(bossDaisX, bossDaisY - 28, 34, 11, Math.sin(spin) * 0.15, 0, Math.PI * 1.7);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // 4. Draw Crisp 1:1 Native CPS3 Warrior Battle Sprite on Bottom-Left Dais
   const playerLunge =
@@ -1504,8 +1829,18 @@ export function drawMegaBossCutscene(
     ctx.fillStyle = 'rgba(7, 3, 15, 0.88)';
     ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
 
-    const accent = cutscene.archetype === 'mega_dio' ? '#facc15' : '#8b5cf6';
-    const subAccent = cutscene.archetype === 'mega_dio' ? '#22d3ee' : '#34d399';
+    const accent =
+      cutscene.archetype === 'gyro_zeppeli'
+        ? '#22c55e'
+        : cutscene.archetype === 'mega_dio'
+          ? '#facc15'
+          : '#8b5cf6';
+    const subAccent =
+      cutscene.archetype === 'gyro_zeppeli'
+        ? '#fef08a'
+        : cutscene.archetype === 'mega_dio'
+          ? '#22d3ee'
+          : '#34d399';
 
     // Diagonal speed lines behind Mega Boss
     ctx.strokeStyle = accent;
