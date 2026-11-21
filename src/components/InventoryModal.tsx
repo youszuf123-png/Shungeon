@@ -103,7 +103,11 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                       ? 'Equipped'
                       : unlocked
                         ? 'Equip'
-                        : `Forge (${w.craftCost?.amount} ${w.craftCost?.resourceId.replace('_', ' ')})`}
+                        : w.craftCost
+                          ? `Forge (${w.craftCost.amount} ${w.craftCost.resourceId.replace('_', ' ')})`
+                          : w.shopPrice
+                            ? `Armory (${w.shopPrice}G)`
+                            : 'Hidden Behind CP1'}
                   </button>
                 </div>
               );

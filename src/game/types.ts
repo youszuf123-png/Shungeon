@@ -6,7 +6,25 @@ export type WeaponId =
   | 'crescent'
   | 'runeblade'
   | 'katana'
-  | 'fire_sword';
+  | 'fire_sword'
+  | 'azure_glaive'
+  | 'thunder_odachi'
+  | 'crimson_reaper'
+  | 'emerald_zephyr'
+  | 'solar_excalibur'
+  | 'venom_twinblade';
+
+export type WeaponSpecialEffect =
+  | 'none'
+  | 'burn'
+  | 'wind_wave'
+  | 'seismic'
+  | 'void_pull'
+  | 'frost'
+  | 'lightning'
+  | 'lifesteal'
+  | 'holy_beam'
+  | 'venom';
 
 export type SkillId =
   | 'blade_dash'
@@ -50,8 +68,13 @@ export interface WeaponDef {
   knockback: number;
   color: string;
   accentColor: string;
+  visualLength: number;
+  visualWidth: number;
+  specialEffect: WeaponSpecialEffect;
+  specialLabel: string;
   unlockedByDefault: boolean;
   craftCost?: { resourceId: string; amount: number };
+  shopPrice?: number;
 }
 
 export interface SkillDef {
@@ -76,6 +99,9 @@ export interface InventoryItem {
   count: number;
   color: string;
   healAmount?: number;
+  attackBoostMult?: number;
+  boostDuration?: number;
+  shopPrice?: number;
   attackBonus?: number;
   maxHpBonus?: number;
 }
@@ -117,10 +143,14 @@ export type RealmMode =
   | 'isekai_town'
   | 'isekai_guild'
   | 'isekai_wardrobe'
+  | 'isekai_potion_shop'
+  | 'isekai_weapons_shop'
+  | 'dungeon_exterior'
   | 'goblin_dungeon'
   | 'carriage_escort'
   | 'demon_realm'
-  | 'demon_king_arena';
+  | 'demon_king_arena'
+  | 'dueling_arena';
 
 export type GuildRank = 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
 
@@ -128,7 +158,8 @@ export type GuildMissionId =
   | 'f_goblin_warren'
   | 'e_hobgoblin_caves'
   | 'd_deep_goblin_keep'
-  | 'c_princess_carriage'
+  | 'c_demon_vanguard'
+  | 'b_princess_carriage'
   | 'b_demon_invasion'
   | 'a_three_demon_kings';
 
@@ -263,11 +294,25 @@ export interface InteractableProp {
     | 'isekai_portal'
     | 'guild_door'
     | 'wardrobe_door'
+    | 'potion_door'
+    | 'weapons_door'
     | 'town_exit_door'
     | 'guild_reception'
+    | 'guild_floor2_reception'
+    | 'guild_stairs'
     | 'guild_bar'
     | 'wardrobe_counter'
-    | 'bulletin_board'
+    | 'potion_counter'
+    | 'weapons_counter'
+    | 'caravan_rider'
+    | 'hot_spring'
+    | 'fountain'
+    | 'dungeon_hole'
+    | 'dungeon_exit_rope'
+    | 'dungeon_descend_gate'
+    | 'citadel_portal'
+    | 'arena_door'
+    | 'arena_board'
     | 'mission_gate';
   label: string;
   dialogue: string[];
@@ -315,6 +360,13 @@ export interface EnemyState {
   rewardGold: number;
   koTimer: number;
   attackDamage?: number;
+  isDungeonBoss?: boolean;
+  sizeScale?: number;
+  darkness?: number;
+  variantStyle?: 'crimson_ash' | 'frost_seraph' | 'void_eclipse';
+  statusBurnTimer?: number;
+  statusFrostTimer?: number;
+  statusVenomTimer?: number;
 }
 
 export interface ActiveBoss {
@@ -398,7 +450,14 @@ export interface PlayerState {
   attackPhase: 'none' | 'windup' | 'active' | 'recovery';
   attackTimer: number;
   comboStep: number;
+  comboSubStep: number;
+  comboSubTimer: number;
   comboWindowTimer: number;
+  isSpinDashAttack: boolean;
+  spinDashTimer: number;
+  damageBoostMultiplier: number;
+  damageBoostTimer: number;
+  hotSpringTimer?: number;
   invulnTimer: number;
   parryTimer: number;
   chronoFreezeTimer: number;
@@ -446,27 +505,6 @@ export interface GuildInvite {
   missionId: GuildMissionId;
   missionTitle: string;
   worldId: string;
-}
-
-export interface GuildBulletinRankingEntry {
-  name: string;
-  rank: GuildRank;
-  score: number;
-  title: string;
-}
-
-export interface GuildBulletinMissionEntry {
-  missionId: GuildMissionId;
-  title: string;
-  rankReq: GuildRank;
-  activeParties: number;
-  completions: number;
-}
-
-export interface GuildBulletinSnapshot {
-  rankings: GuildBulletinRankingEntry[];
-  popularMissions: GuildBulletinMissionEntry[];
-  tickerText: string;
 }
 
 export interface BasteraSaveSummary {
@@ -582,7 +620,18 @@ export interface MegaCutsceneHud {
 export interface IsekaiNpc {
   id: string;
   name: string;
-  role: 'townfolk' | 'merchant' | 'guard' | 'adventurer' | 'drinker' | 'receptionist' | 'tailor';
+  role:
+    | 'townfolk'
+    | 'merchant'
+    | 'guard'
+    | 'adventurer'
+    | 'drinker'
+    | 'receptionist'
+    | 'tailor'
+    | 'alchemist'
+    | 'blacksmith'
+    | 'onsen_attendant'
+    | 'caravan_master';
   x: number;
   y: number;
   minX: number;
@@ -597,6 +646,25 @@ export interface IsekaiNpc {
   drinkingPhase?: number;
   dialogue: string[];
   crownedDialogue?: string[];
+}
+
+export interface AlliedNpc {
+  id: string;
+  name: string;
+  role: 'knight' | 'lancer' | 'mage';
+  x: number;
+  y: number;
+  vx: number;
+  facing: 1 | -1;
+  hp: number;
+  maxHp: number;
+  attackCooldown: number;
+  healCooldown?: number;
+  walkCycle: number;
+  hitFlash: number;
+  armorColor: string;
+  cloakColor: string;
+  weaponColor: string;
 }
 
 export interface DemonKingEntity {
@@ -655,6 +723,7 @@ export interface CarriageEscortState {
   wheelPhase: number;
   hitFlash: number;
   wavesSpawned: number;
+  variant?: number;
 }
 
 export interface IsekaiMissionHud {
@@ -673,9 +742,12 @@ export interface IsekaiMissionHud {
     hp: number;
     maxHp: number;
     defeated: boolean;
+    active?: boolean;
     windVulnerable?: boolean;
     stunned?: boolean;
   }[];
+  currentDemonKingStage?: 1 | 2 | 3;
+  alliedNpcs?: { id: string; name: string; hp: number; maxHp: number }[];
   activeCastBanner?: string | null;
   completed: boolean;
 }
@@ -684,6 +756,83 @@ export interface CoronationCutsceneHud {
   phase: 'approach' | 'crowning' | 'cheering';
   progress: number;
   subtitle: string;
+}
+
+export type ArenaChallengerId =
+  | 'sung_jin_ryu'
+  | 'lin_tianming'
+  | 'kurogane_kirito'
+  | 'yan_wuji'
+  | 'lord_shadow'
+  | 'bai_qingxue';
+
+export type ArenaWorldOrigin =
+  | 'Manhwa · Shadow Gate'
+  | 'Cultivation · Xianxia Sword Sect'
+  | 'Isekai Anime · Twin-Blade Aincrad'
+  | 'Manhua · Crimson Martial Palace'
+  | 'Isekai Manga · Shadow Garden'
+  | 'Wuxia · Glacial Nirvana Peak';
+
+export interface ArenaSkillDef {
+  id: string;
+  name: string;
+  damage: number;
+  kind: 'slash_barrage' | 'flying_swords' | 'dash_cleave' | 'crimson_wave' | 'atomic_nova' | 'frost_lotus';
+  color: string;
+  shout: string;
+}
+
+export interface ArenaChallengerDef {
+  id: ArenaChallengerId;
+  name: string;
+  title: string;
+  worldOrigin: ArenaWorldOrigin;
+  weaponName: string;
+  maxHp: number;
+  attackDamage: number;
+  moveSpeed: number;
+  primaryColor: string;
+  secondaryColor: string;
+  auraColor: string;
+  hairColor: string;
+  capeColor: string;
+  weaponColor: string;
+  description: string;
+  skills: [ArenaSkillDef, ArenaSkillDef, ArenaSkillDef];
+}
+
+export interface ActiveArenaDuel {
+  challengerId: ArenaChallengerId;
+  def: ArenaChallengerDef;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  w: number;
+  h: number;
+  hp: number;
+  maxHp: number;
+  facing: 1 | -1;
+  state: 'idle' | 'approach' | 'windup' | 'attack' | 'recover';
+  stateTimer: number;
+  skillCooldown: number;
+  skillIndex: number;
+  hitFlash: number;
+  walkCycle: number;
+  activeSkillBanner: string | null;
+  activeSkillTimer: number;
+  stunTimer: number;
+  windVulnerable: boolean;
+}
+
+export interface DungeonChoicePending {
+  missionId: GuildMissionId;
+  missionTitle: string;
+  realm: 'goblin_dungeon' | 'demon_realm';
+  nextDepth: number;
+  promotedRank: GuildRank | null;
+  rewardGold: number;
 }
 
 export interface HudSnapshot {
@@ -716,15 +865,40 @@ export interface HudSnapshot {
   idleSecondsToIsekai: number;
   realm: RealmMode;
   guildRank: GuildRank;
+  rankMissionsCompleted: number;
+  missionsRequiredPerRank: number;
+  bRankEscortsCompleted: number;
+  acceptedMissionId: GuildMissionId | null;
+  dungeonTarget: 'goblin_dungeon' | 'demon_realm' | 'demon_king_arena';
+  dungeonDepth: number;
+  dungeonChoicePending: DungeonChoicePending | null;
+  activeGuildFloor: 1 | 2;
+  damageBoostMultiplier: number;
+  damageBoostSeconds: number;
+  hotSpringSeconds: number;
+  isNightTime: boolean;
+  nightFactor: number;
+  secondsToNightToggle: number;
   unlockedWardrobe: string[];
   crownUnlocked: boolean;
   gyroDefeated: boolean;
   isekaiPortalOpen: boolean;
   isekaiMission: IsekaiMissionHud | null;
   coronationCutscene: CoronationCutsceneHud | null;
+  arenaWins: number;
+  arenaDuel: {
+    challengerId: ArenaChallengerId;
+    name: string;
+    title: string;
+    worldOrigin: ArenaWorldOrigin;
+    weaponName: string;
+    hp: number;
+    maxHp: number;
+    activeSkillBanner: string | null;
+    winsCount: number;
+  } | null;
   onlineAdventurers: OnlineAdventurer[];
   pendingGuildInvites: GuildInvite[];
-  guildBulletin: GuildBulletinSnapshot;
   inventory: InventoryItem[];
   dialogue: DialogueState | null;
   activeBoss: {

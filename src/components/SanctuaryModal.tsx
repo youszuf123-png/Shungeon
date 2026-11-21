@@ -382,7 +382,9 @@ export const SanctuaryModal: React.FC<SanctuaryModalProps> = ({
                             ? 'Equip'
                             : w.craftCost
                               ? `Forge (${w.craftCost.amount} ${w.craftCost.resourceId.replace('_', ' ')})`
-                              : 'Hidden Behind CP1'}
+                              : w.shopPrice
+                                ? `Armory (${w.shopPrice}G)`
+                                : 'Hidden Behind CP1'}
                       </button>
                     </div>
                   );

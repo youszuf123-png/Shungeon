@@ -19,9 +19,17 @@ interface GameHudProps {
   onOpenWorlds: () => void;
   onOpenGuild: () => void;
   onOpenWardrobe: () => void;
-  onEnterRoom: (room: 'isekai_town' | 'isekai_guild' | 'isekai_wardrobe') => void;
+  onOpenPotionShop: () => void;
+  onOpenWeaponsShop: () => void;
+  onEnterRoom: (
+    room:
+      | 'isekai_town'
+      | 'isekai_guild'
+      | 'isekai_wardrobe'
+      | 'isekai_potion_shop'
+      | 'isekai_weapons_shop',
+  ) => void;
   onReturnToCitadel: () => void;
-  onToggleBulletin: () => void;
   onAllocateStat: (statKey: StatKey) => void;
   onTogglePause: () => void;
   onToggleMute: () => void;
@@ -48,9 +56,10 @@ export const GameHud: React.FC<GameHudProps> = ({
   onOpenWorlds,
   onOpenGuild,
   onOpenWardrobe,
+  onOpenPotionShop,
+  onOpenWeaponsShop,
   onEnterRoom,
   onReturnToCitadel,
-  onToggleBulletin,
   onAllocateStat,
   onTogglePause,
   onToggleMute,
@@ -69,6 +78,13 @@ export const GameHud: React.FC<GameHudProps> = ({
   const currentLine = hud.dialogue
     ? (hud.dialogue.lines[hud.dialogue.lineIndex] || '').slice(0, hud.dialogue.charIndex)
     : '';
+
+  const inIsekaiHub =
+    hud.realm === 'isekai_town' ||
+    hud.realm === 'isekai_guild' ||
+    hud.realm === 'isekai_wardrobe' ||
+    hud.realm === 'isekai_potion_shop' ||
+    hud.realm === 'isekai_weapons_shop';
 
   return (
     <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-3 sm:p-4">
@@ -124,6 +140,15 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </>
               )}
             </div>
+            {hud.damageBoostSeconds > 0 && (
+              <div
+                data-testid="damage-boost-hud"
+                className="mt-1 px-1.5 py-0.5 bg-[#2a0f3b] border border-fuchsia-400/75 font-pixel-mono text-[9px] font-bold text-fuchsia-200 flex items-center justify-between"
+              >
+                <span>⚡ +{Math.round((hud.damageBoostMultiplier - 1) * 100)}% ATK POTION</span>
+                <span className="text-yellow-300">{Math.ceil(hud.damageBoostSeconds)}s</span>
+              </div>
+            )}
           </div>
 
           {/* Solo Leveling Quick Status Bar */}
@@ -179,13 +204,14 @@ export const GameHud: React.FC<GameHudProps> = ({
             </button>
           </div>
 
-          {/* Isekai Hub Quick-Action Strip when exploring Solaris Town / Guild / Wardrobe */}
-          {(hud.realm === 'isekai_town' || hud.realm === 'isekai_guild' || hud.realm === 'isekai_wardrobe') && (
-            <div className="pointer-events-auto flex items-center flex-wrap gap-1">
+          {/* Isekai Hub Quick-Action Strip when exploring Solaris Town / Guild / Shops */}
+          {inIsekaiHub && (
+            <div className="pointer-events-auto flex items-center flex-wrap gap-1 max-w-[380px]">
               {hud.realm !== 'isekai_town' && (
                 <button
                   type="button"
                   tabIndex={-1}
+                  data-testid="hud-enter-town-btn"
                   onClick={(e) => {
                     e.currentTarget.blur();
                     onEnterRoom('isekai_town');
@@ -209,31 +235,45 @@ export const GameHud: React.FC<GameHudProps> = ({
                   ENTER GUILD
                 </button>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    data-testid="hud-open-guild-btn"
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onOpenGuild();
-                    }}
-                    className="px-2 py-1 bg-[#7c2d12]/95 hover:bg-[#9a3412] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
-                  >
-                    RECEPTION QUESTS
-                  </button>
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onToggleBulletin();
-                    }}
-                    className="px-2 py-1 bg-[#29170a]/95 hover:bg-[#3f2310] border border-amber-400/75 font-pixel-mono text-[9px] font-bold text-amber-200 cursor-pointer"
-                  >
-                    BULLETIN
-                  </button>
-                </>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-open-guild-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenGuild();
+                  }}
+                  className="px-2 py-1 bg-[#7c2d12]/95 hover:bg-[#9a3412] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+                >
+                  RECEPTION QUESTS
+                </button>
+              )}
+              {hud.realm !== 'isekai_potion_shop' ? (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-enter-potion-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onEnterRoom('isekai_potion_shop');
+                  }}
+                  className="px-2 py-1 bg-[#065f46]/90 hover:bg-[#047857] border border-emerald-300 font-pixel-mono text-[9px] font-bold text-emerald-50 cursor-pointer"
+                >
+                  POTION SHOP
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-open-potion-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenPotionShop();
+                  }}
+                  className="px-2 py-1 bg-[#065f46]/95 hover:bg-[#047857] border border-emerald-300 font-pixel-mono text-[9px] font-bold text-emerald-50 cursor-pointer"
+                >
+                  BUY POTIONS
+                </button>
               )}
               {hud.realm !== 'isekai_wardrobe' ? (
                 <button
@@ -260,6 +300,33 @@ export const GameHud: React.FC<GameHudProps> = ({
                   className="px-2 py-1 bg-[#701a75]/95 hover:bg-[#86198f] border border-pink-300 font-pixel-mono text-[9px] font-bold text-pink-50 cursor-pointer"
                 >
                   SHOP CATALOG
+                </button>
+              )}
+              {hud.realm !== 'isekai_weapons_shop' ? (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-enter-weapons-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onEnterRoom('isekai_weapons_shop');
+                  }}
+                  className="px-2 py-1 bg-[#78350f]/90 hover:bg-[#92400e] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+                >
+                  WEAPONS SHOP
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-open-weapons-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenWeaponsShop();
+                  }}
+                  className="px-2 py-1 bg-[#78350f]/95 hover:bg-[#92400e] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+                >
+                  WEAPONS ARMORY
                 </button>
               )}
               <button
@@ -299,6 +366,14 @@ export const GameHud: React.FC<GameHudProps> = ({
                 <span className="text-amber-300 font-bold">
                   [{hud.isekaiMission.rank}-RANK QUEST] {hud.isekaiMission.title}
                 </span>
+                {(hud.realm === 'goblin_dungeon' || hud.realm === 'demon_realm') && (
+                  <span
+                    data-testid="dungeon-depth-badge"
+                    className="px-1.5 py-0.5 bg-[#090612] border border-amber-400/60 text-amber-200 shrink-0"
+                  >
+                    Depth {hud.dungeonDepth}
+                  </span>
+                )}
               </div>
               <div className="font-pixel-mono text-[10px] text-amber-100 mt-0.5">
                 {hud.isekaiMission.objectiveText}

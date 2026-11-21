@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {
   BOSSES_PER_BIOME,
   ORB_DROP_CHANCE,
+  POTION_SHOP_IDS,
   TOTAL_BOSSES,
   TOTAL_HIDDEN_PASSAGES,
   WEAPONS,
+  WEAPON_SHOP_ORDER,
   createGyroZeppeliBossDef,
   getBiomeForBossIndex,
   getBossDef,
@@ -18,6 +20,7 @@ import {
   applyDamageToBoss,
   assignSkillToSlot,
   calculateAttackDamage,
+  computeWeaponHitbox,
   craftWeapon,
   createInitialInventory,
   createInitialPlayer,
@@ -30,6 +33,7 @@ import {
   stepPlayerPhysics,
   triggerPlayerDash,
   triggerSkillSlot,
+  triggerSpinPokeDash,
   updateWarriorCustomization,
   useInventoryItem,
 } from './rules';
@@ -60,6 +64,9 @@ import {
   ISEKAI_IDLE_TRANSPORT_SECONDS,
   PURPLE_FLAME_SKILLS,
   buyOrEquipWardrobeItem,
+  buyOrEquipWeaponShopItem,
+  buyPotionShopItem,
+  canAccessGuildFloor2,
   canStartGuildMission,
   createBanditWave,
   createDemonKingPurpleFlameCast,
@@ -633,23 +640,44 @@ test('Isekai guild rank progression (F -> S), NPC forward/back patrolling, Wardr
   player.gold = 200;
 
   assert.equal(canStartGuildMission('F', 'f_goblin_warren'), true);
-  assert.equal(canStartGuildMission('F', 'c_princess_carriage'), false);
+  assert.equal(canStartGuildMission('F', 'b_princess_carriage'), false);
+  assert.equal(canAccessGuildFloor2('F'), false);
+  assert.equal(canAccessGuildFloor2('C'), false);
+  assert.equal(canAccessGuildFloor2('B'), true);
 
-  let rank = 'F' as const;
-  const rankSequence: typeof GUILD_MISSIONS[number]['id'][] = [
+  let rank: 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S' = 'F';
+  const floor1Sequence: typeof GUILD_MISSIONS[number]['id'][] = [
     'f_goblin_warren',
     'e_hobgoblin_caves',
     'd_deep_goblin_keep',
-    'c_princess_carriage',
-    'b_demon_invasion',
-    'a_three_demon_kings',
+    'c_demon_vanguard',
   ];
-  for (const mId of rankSequence) {
+  for (const mId of floor1Sequence) {
     assert.equal(canStartGuildMission(rank, mId), true);
-    const promo = promoteGuildRankAfterMission(rank, mId, inv);
+    const promo = promoteGuildRankAfterMission(rank, mId, inv, 0);
     assert.equal(promo.promoted, true);
-    rank = promo.nextRank as typeof rank;
+    rank = promo.nextRank;
   }
+  assert.equal(rank, 'B');
+  assert.equal(canAccessGuildFloor2(rank), true);
+
+  // B-Rank requires 3 different bandit-gang Princess Escorts to advance to A-Rank
+  let escorts = 0;
+  for (let i = 1; i <= 2; i++) {
+    const p = promoteGuildRankAfterMission(rank, 'b_princess_carriage', inv, escorts);
+    assert.equal(p.promoted, false);
+    assert.equal(p.nextRank, 'B');
+    assert.equal(p.nextBRankEscorts, i);
+    escorts = p.nextBRankEscorts;
+  }
+  const thirdEscort = promoteGuildRankAfterMission(rank, 'b_princess_carriage', inv, escorts);
+  assert.equal(thirdEscort.promoted, true);
+  assert.equal(thirdEscort.nextRank, 'A');
+  rank = thirdEscort.nextRank;
+
+  const finalPromo = promoteGuildRankAfterMission(rank, 'a_three_demon_kings', inv, thirdEscort.nextBRankEscorts);
+  assert.equal(finalPromo.promoted, true);
+  rank = finalPromo.nextRank;
   assert.equal(rank, 'S');
   assert.ok(inv.some((it) => it.id === 'rank_badge_s'));
 
@@ -816,6 +844,66 @@ test('elemental orbs drop at 8% chance, apply Flame 25% HP / Wind +30% DMG / Ele
   assert.equal(restored.inventory.find((i) => i.id === 'orb_wind')?.count, 3);
   assert.equal(restored.inventory.find((i) => i.id === 'orb_electric')?.count, 0);
 });
+
+test('deeper dungeons spawn stronger dungeon bosses, Potion Shop boosts ATK, Weapons Shop stocks unique blades, and sword combo choreography works', () => {
+  // Deeper dungeon waves spawn strong Dungeon Bosses at Depth >= 2
+  const gobsD1 = createGoblinDungeonWave('f_goblin_warren', 0, 1);
+  assert.equal(gobsD1.some((e) => e.isDungeonBoss), false);
+  const gobsD2 = createGoblinDungeonWave('f_goblin_warren', 0, 2);
+  const gobBoss = gobsD2.find((e) => e.isDungeonBoss);
+  assert.ok(gobBoss !== undefined);
+  assert.ok(gobBoss.maxHp >= 400);
+
+  const demD2 = createDemonRealmWave(2);
+  assert.ok(demD2.some((e) => e.isDungeonBoss));
+
+  // Potion Shop HP & Damage-Boost Potions
+  const player = createInitialPlayer();
+  const inv = createInitialInventory();
+  player.gold = 300;
+  const baseDmg = calculateAttackDamage(player, 1, false);
+  const buyBoost = buyPotionShopItem(player, inv, 'fury_draught');
+  assert.equal(buyBoost.ok, true);
+  const drinkBoost = useInventoryItem(player, inv, 'fury_draught');
+  assert.equal(drinkBoost.ok, true);
+  assert.ok(player.damageBoostMultiplier > 1);
+  const boostedDmg = calculateAttackDamage(player, 1, false);
+  assert.ok(boostedDmg > baseDmg);
+  assert.ok(POTION_SHOP_IDS.includes('titan_crimson_tonic'));
+
+  // Weapons Shop: unique colors, sizes, specials, and paid unlock guard
+  const armoryColors = new Set(WEAPON_SHOP_ORDER.map((id) => WEAPONS[id].color));
+  assert.equal(armoryColors.size, WEAPON_SHOP_ORDER.length);
+  const craftBlocked = craftWeapon(player, inv, 'venom_twinblade');
+  assert.equal(craftBlocked.ok, false);
+  player.gold = 1000;
+  const buyWep = buyOrEquipWeaponShopItem(player, 'azure_glaive');
+  assert.equal(buyWep.ok, true);
+  assert.equal(player.equippedWeapon, 'azure_glaive');
+
+  // Sword Combo Choreography: Click 1 -> Click 2 (Double Poke 1.48x range) -> Click 3 (Triple Slash) -> Spin Dash Poke (1.85x range)
+  const wRange = WEAPONS[player.equippedWeapon].range;
+  assert.equal(startWeaponAttack(player), true);
+  assert.equal(player.comboStep, 1);
+  const hb1 = computeWeaponHitbox(player);
+
+  player.attackPhase = 'none';
+  assert.equal(startWeaponAttack(player), true);
+  assert.equal(player.comboStep, 2);
+  const hb2 = computeWeaponHitbox(player);
+  assert.equal(hb2.w, Math.round(wRange * 1.48));
+  assert.ok(hb2.w > hb1.w);
+
+  player.attackPhase = 'none';
+  assert.equal(startWeaponAttack(player), true);
+  assert.equal(player.comboStep, 3);
+
+  assert.equal(triggerSpinPokeDash(player), true);
+  assert.equal(player.isSpinDashAttack, true);
+  const hbSpin = computeWeaponHitbox(player);
+  assert.equal(hbSpin.w, Math.round(wRange * 1.85));
+});
+
 
 
 

@@ -2,20 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BossBattleOverlay } from './components/BossBattleOverlay';
 import { CheckpointMapModal } from './components/CheckpointMapModal';
 import { GameHud } from './components/GameHud';
-import { GuildBulletinOverlay } from './components/GuildBulletinOverlay';
 import { GuildInviteToast } from './components/GuildInviteToast';
 import { GuildModal } from './components/GuildModal';
 import { InventoryModal } from './components/InventoryModal';
+import { PotionShopModal } from './components/PotionShopModal';
 import { SanctuaryModal } from './components/SanctuaryModal';
 import { SaveLoadModal } from './components/SaveLoadModal';
 import { SoloLevelingStatusModal } from './components/SoloLevelingStatusModal';
 import { StatusModals } from './components/StatusModals';
 import { TitleScreen } from './components/TitleScreen';
 import { WardrobeModal } from './components/WardrobeModal';
+import { WeaponShopModal } from './components/WeaponShopModal';
 import { WorldsModal } from './components/WorldsModal';
 import { TOTAL_BOSSES, TOTAL_HIDDEN_PASSAGES } from './game/data';
 import { BasteraGameEngine } from './game/engine';
-import { ISEKAI_IDLE_TRANSPORT_SECONDS, createDefaultGuildBulletin } from './game/isekai';
+import { ISEKAI_IDLE_TRANSPORT_SECONDS } from './game/isekai';
 import {
   DEFAULT_WARRIOR_CUSTOMIZATION,
   createInitialInventory,
@@ -66,6 +67,12 @@ const INITIAL_HUD: HudSnapshot = {
   idleSecondsToIsekai: ISEKAI_IDLE_TRANSPORT_SECONDS,
   realm: 'citadel',
   guildRank: 'F',
+  bRankEscortsCompleted: 0,
+  dungeonDepth: 1,
+  dungeonChoicePending: null,
+  activeGuildFloor: 1,
+  damageBoostMultiplier: 1,
+  damageBoostSeconds: 0,
   unlockedWardrobe: ['outfit_knight_plate', 'hat_helm'],
   crownUnlocked: false,
   gyroDefeated: false,
@@ -74,7 +81,6 @@ const INITIAL_HUD: HudSnapshot = {
   coronationCutscene: null,
   onlineAdventurers: [],
   pendingGuildInvites: [],
-  guildBulletin: createDefaultGuildBulletin(),
   inventory: createInitialInventory(),
   dialogue: null,
   activeBoss: null,
@@ -122,8 +128,10 @@ export default function App() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showWorldsModal, setShowWorldsModal] = useState(false);
   const [showGuildModal, setShowGuildModal] = useState(false);
+  const [guildModalFloor, setGuildModalFloor] = useState<1 | 2>(1);
   const [showWardrobeModal, setShowWardrobeModal] = useState(false);
-  const [bulletinCollapsed, setBulletinCollapsed] = useState(false);
+  const [showPotionShopModal, setShowPotionShopModal] = useState(false);
+  const [showWeaponsShopModal, setShowWeaponsShopModal] = useState(false);
   const [saves, setSaves] = useState<BasteraSaveSummary[]>(() => listLocalSaves());
   const [savesLoading, setSavesLoading] = useState(false);
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
@@ -138,6 +146,8 @@ export default function App() {
     setShowWorldsModal(false);
     setShowGuildModal(false);
     setShowWardrobeModal(false);
+    setShowPotionShopModal(false);
+    setShowWeaponsShopModal(false);
   }, []);
 
   const refreshSaves = useCallback(async () => {
@@ -192,13 +202,22 @@ export default function App() {
 
     engineRef.current = engine;
     engine.setUiCallbacks({
-      onOpenGuild: () => {
+      onOpenGuild: (floor) => {
         closeAllModals();
+        setGuildModalFloor(floor);
         setShowGuildModal(true);
       },
       onOpenWardrobe: () => {
         closeAllModals();
         setShowWardrobeModal(true);
+      },
+      onOpenPotionShop: () => {
+        closeAllModals();
+        setShowPotionShopModal(true);
+      },
+      onOpenWeaponsShop: () => {
+        closeAllModals();
+        setShowWeaponsShopModal(true);
       },
     });
     if (autostart) {
@@ -338,6 +357,14 @@ export default function App() {
           setShowWardrobeModal(false);
           return;
         }
+        if (showPotionShopModal) {
+          setShowPotionShopModal(false);
+          return;
+        }
+        if (showWeaponsShopModal) {
+          setShowWeaponsShopModal(false);
+          return;
+        }
         if (hud.status === 'playing') {
           engineRef.current?.setStatus('paused');
         } else if (hud.status === 'paused') {
@@ -373,6 +400,8 @@ export default function App() {
     showWorldsModal,
     showGuildModal,
     showWardrobeModal,
+    showPotionShopModal,
+    showWeaponsShopModal,
     handleStartGame,
     closeAllModals,
   ]);
@@ -386,7 +415,10 @@ export default function App() {
         showSaveModal ||
         showWorldsModal ||
         showGuildModal ||
-        showWardrobeModal,
+        showWardrobeModal ||
+        showPotionShopModal ||
+        showWeaponsShopModal ||
+        Boolean(hud.dungeonChoicePending),
     );
   }, [
     showInventory,
@@ -397,6 +429,9 @@ export default function App() {
     showWorldsModal,
     showGuildModal,
     showWardrobeModal,
+    showPotionShopModal,
+    showWeaponsShopModal,
+    hud.dungeonChoicePending,
   ]);
 
   const handleCycleWeapon = useCallback(() => {
@@ -486,15 +521,23 @@ export default function App() {
           onOpenWorlds={openWorldsModal}
           onOpenGuild={() => {
             closeAllModals();
+            setGuildModalFloor(hud.activeGuildFloor);
             setShowGuildModal(true);
           }}
           onOpenWardrobe={() => {
             closeAllModals();
             setShowWardrobeModal(true);
           }}
+          onOpenPotionShop={() => {
+            closeAllModals();
+            setShowPotionShopModal(true);
+          }}
+          onOpenWeaponsShop={() => {
+            closeAllModals();
+            setShowWeaponsShopModal(true);
+          }}
           onEnterRoom={(room) => engineRef.current?.enterIsekaiRoom(room, 96)}
           onReturnToCitadel={() => engineRef.current?.returnToCitadel()}
-          onToggleBulletin={() => setBulletinCollapsed((v) => !v)}
           onAllocateStat={(key: StatKey) => engineRef.current?.allocatePlayerStat(key, 1)}
           onTogglePause={() => engineRef.current?.setStatus('paused')}
           onToggleMute={() => engineRef.current?.toggleMute()}
@@ -506,18 +549,6 @@ export default function App() {
           onAdvanceDialogue={() => engineRef.current?.advanceDialogue()}
           onVirtualKey={(action, pressed) => engineRef.current?.triggerVirtualKey(action, pressed)}
         />
-      )}
-
-      {/* Animated Live Guild Bulletin inside Solaris Adventure Guild */}
-      {hud.status === 'playing' && hud.realm === 'isekai_guild' && !hud.bossBattle && (
-        <div className="fixed right-3 sm:right-5 top-20 z-20 pointer-events-none">
-          <GuildBulletinOverlay
-            bulletin={hud.guildBulletin}
-            playerRank={hud.guildRank}
-            collapsed={bulletinCollapsed}
-            onToggleCollapse={() => setBulletinCollapsed((v) => !v)}
-          />
-        </div>
       )}
 
       {/* Incoming Co-op Adventure Guild Invites */}
@@ -621,6 +652,7 @@ export default function App() {
       {showGuildModal && hud.status === 'playing' && (
         <GuildModal
           hud={hud}
+          initialFloor={guildModalFloor}
           onClose={() => setShowGuildModal(false)}
           onStartMission={(missionId, broadcastToParty) =>
             engineRef.current?.startGuildMission(missionId, broadcastToParty)
@@ -639,6 +671,83 @@ export default function App() {
           onClose={() => setShowWardrobeModal(false)}
           onBuyOrEquip={(itemId) => engineRef.current?.buyOrEquipWardrobeItemById(itemId)}
         />
+      )}
+
+      {/* Solaris Alchemist Potion Shop Modal */}
+      {showPotionShopModal && hud.status === 'playing' && (
+        <PotionShopModal
+          hud={hud}
+          onClose={() => setShowPotionShopModal(false)}
+          onBuyPotion={(itemId, drinkNow) => engineRef.current?.buyPotionItem(itemId, drinkNow)}
+        />
+      )}
+
+      {/* Grand Solaris Weapons Armory Modal */}
+      {showWeaponsShopModal && hud.status === 'playing' && (
+        <WeaponShopModal
+          hud={hud}
+          onClose={() => setShowWeaponsShopModal(false)}
+          onBuyOrEquipWeapon={(wid) => engineRef.current?.buyOrEquipShopWeapon(wid)}
+        />
+      )}
+
+      {/* Below-B Dungeon Completion Choice: Return to Guild vs Stay & Descend Deeper */}
+      {hud.status === 'playing' && hud.dungeonChoicePending && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/82"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Dungeon Clear Choice"
+          data-testid="dungeon-choice-modal"
+        >
+          <div className="relative w-full max-w-md bg-[#160d12] border-2 border-amber-400 p-5 text-amber-50 shadow-[0_12px_36px_rgba(0,0,0,0.94)] space-y-4">
+            <span className="absolute top-0 left-0 w-2 h-2 bg-amber-300" />
+            <span className="absolute top-0 right-0 w-2 h-2 bg-amber-300" />
+            <span className="absolute bottom-0 left-0 w-2 h-2 bg-amber-300" />
+            <span className="absolute bottom-0 right-0 w-2 h-2 bg-amber-300" />
+            <div>
+              <div className="font-pixel-mono text-[10px] tracking-widest text-emerald-300 uppercase">
+                DUNGEON DEPTH {Math.max(1, hud.dungeonChoicePending.nextDepth - 1)} CLEARED
+              </div>
+              <h2 className="font-display text-lg font-bold text-amber-100 mt-1">
+                {hud.dungeonChoicePending.missionTitle}
+              </h2>
+              <p className="font-pixel-mono text-xs text-amber-100/80 mt-1.5 leading-relaxed">
+                +{hud.dungeonChoicePending.rewardGold}G earned
+                {hud.dungeonChoicePending.promotedRank
+                  ? ` · Promoted to ${hud.dungeonChoicePending.promotedRank}-Rank!`
+                  : ''}
+                . Return safely to Solaris Adventure Guild, or descend deeper into darker caverns to challenge a stronger Dungeon Boss for bonus loot!
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="dungeon-choice-deeper-btn"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  engineRef.current?.chooseStayDeeperInDungeon();
+                }}
+                className="w-full py-2.5 px-3 bg-[#581c87] hover:bg-[#6b21a8] border border-purple-300 font-pixel-mono text-xs font-bold text-purple-50 cursor-pointer"
+              >
+                Stay in Dungeon · Descend to Depth {hud.dungeonChoicePending.nextDepth} (Boss)
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="dungeon-choice-return-btn"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  engineRef.current?.chooseReturnToGuildFromDungeon();
+                }}
+                className="w-full py-2.5 px-3 bg-emerald-800 hover:bg-emerald-700 border border-emerald-300 font-pixel-mono text-xs font-bold text-white cursor-pointer"
+              >
+                Return to Adventure Guild
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Pause / Victory / Game Over Modals */}

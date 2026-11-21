@@ -37,6 +37,11 @@ export interface BasteraSaveData {
   bossCooldownSeconds?: number;
   realm?: RealmMode;
   guildRank?: GuildRank;
+  rankMissionsCompleted?: number;
+  bRankEscortsCompleted?: number;
+  acceptedMissionId?: import('./types').GuildMissionId | null;
+  isekaiClockSeconds?: number;
+  arenaWins?: number;
   unlockedWardrobe?: string[];
   foughtIsekaiEnemies?: EnemyArchetype[];
   crownUnlocked?: boolean;
@@ -63,6 +68,11 @@ export function createSavePayload(params: {
   bossCooldownSeconds?: number;
   realm?: RealmMode;
   guildRank?: GuildRank;
+  rankMissionsCompleted?: number;
+  bRankEscortsCompleted?: number;
+  acceptedMissionId?: import('./types').GuildMissionId | null;
+  isekaiClockSeconds?: number;
+  arenaWins?: number;
   unlockedWardrobe?: string[];
   foughtIsekaiEnemies?: EnemyArchetype[];
   crownUnlocked?: boolean;
@@ -99,6 +109,11 @@ export function createSavePayload(params: {
     bossCooldownSeconds: params.bossCooldownSeconds ?? 0,
     realm: params.realm ?? 'citadel',
     guildRank: params.guildRank ?? 'F',
+    rankMissionsCompleted: params.rankMissionsCompleted ?? 0,
+    bRankEscortsCompleted: params.bRankEscortsCompleted ?? 0,
+    acceptedMissionId: params.acceptedMissionId ?? null,
+    isekaiClockSeconds: params.isekaiClockSeconds ?? 0,
+    arenaWins: params.arenaWins ?? 0,
     unlockedWardrobe: params.unlockedWardrobe ? [...params.unlockedWardrobe] : ['outfit_knight_plate', 'hat_helm'],
     foughtIsekaiEnemies: params.foughtIsekaiEnemies ? [...params.foughtIsekaiEnemies] : [],
     crownUnlocked: Boolean(params.crownUnlocked),
@@ -209,10 +224,14 @@ export function normalizeLoadedSave(raw: unknown): BasteraSaveData | null {
     'isekai_town',
     'isekai_guild',
     'isekai_wardrobe',
+    'isekai_potion_shop',
+    'isekai_weapons_shop',
+    'dungeon_exterior',
     'goblin_dungeon',
     'carriage_escort',
     'demon_realm',
     'demon_king_arena',
+    'dueling_arena',
   ];
   const realm: RealmMode =
     typeof obj.realm === 'string' && validRealms.includes(obj.realm as RealmMode)
@@ -273,6 +292,20 @@ export function normalizeLoadedSave(raw: unknown): BasteraSaveData | null {
     bossCooldownSeconds: Number.isFinite(obj.bossCooldownSeconds) ? Math.max(0, Number(obj.bossCooldownSeconds)) : 0,
     realm,
     guildRank,
+    rankMissionsCompleted: Number.isFinite(obj.rankMissionsCompleted)
+      ? Math.max(0, Math.floor(Number(obj.rankMissionsCompleted)))
+      : 0,
+    bRankEscortsCompleted: Number.isFinite(obj.bRankEscortsCompleted)
+      ? Math.max(0, Math.floor(Number(obj.bRankEscortsCompleted)))
+      : 0,
+    acceptedMissionId:
+      typeof obj.acceptedMissionId === 'string'
+        ? (obj.acceptedMissionId as import('./types').GuildMissionId)
+        : null,
+    isekaiClockSeconds: Number.isFinite(obj.isekaiClockSeconds)
+      ? Math.max(0, Number(obj.isekaiClockSeconds))
+      : 0,
+    arenaWins: Number.isFinite(obj.arenaWins) ? Math.max(0, Math.floor(Number(obj.arenaWins))) : 0,
     unlockedWardrobe: Array.isArray(obj.unlockedWardrobe)
       ? obj.unlockedWardrobe.filter((s): s is string => typeof s === 'string')
       : ['outfit_knight_plate', 'hat_helm'],

@@ -422,38 +422,74 @@ export function drawInteractables(
       ctx.stroke();
       pRect(ctx, sx + p.w / 2 - 4, p.y + p.h / 2 - 6, 8, 12, '#fef08a');
       ctx.restore();
-    } else if (p.kind === 'guild_door' || p.kind === 'wardrobe_door' || p.kind === 'town_exit_door') {
-      const frameCol = p.kind === 'guild_door' ? '#b45309' : p.kind === 'wardrobe_door' ? '#db2777' : '#0ea5e9';
+    } else if (
+      p.kind === 'guild_door' ||
+      p.kind === 'wardrobe_door' ||
+      p.kind === 'potion_door' ||
+      p.kind === 'weapons_door' ||
+      p.kind === 'town_exit_door'
+    ) {
+      const frameCol =
+        p.kind === 'guild_door'
+          ? '#b45309'
+          : p.kind === 'wardrobe_door'
+            ? '#db2777'
+            : p.kind === 'potion_door'
+              ? '#10b981'
+              : p.kind === 'weapons_door'
+                ? '#f59e0b'
+                : '#0ea5e9';
       pRect(ctx, sx - 2, p.y - 2, p.w + 4, p.h + 2, '#1c1008');
       pRect(ctx, sx, p.y, p.w, p.h, '#451a03');
       pRect(ctx, sx + 3, p.y + 3, p.w - 6, p.h - 3, '#78350f');
       pRect(ctx, sx + 4, p.y + 6, p.w - 8, 3, frameCol);
       pRect(ctx, sx + p.w - 8, p.y + Math.floor(p.h * 0.55), 3, 3, '#fde047');
     } else if (p.kind === 'guild_bar') {
-      // Tavern Oak Counter + Ale Kegs
       pRect(ctx, sx, p.y + 8, p.w, p.h - 8, '#3f1d0b');
       pRect(ctx, sx - 2, p.y + 6, p.w + 4, 4, '#92400e');
-      pRect(ctx, sx + 10, p.y - 2, 12, 10, '#78350f'); // Ale Barrel
+      pRect(ctx, sx + 10, p.y - 2, 12, 10, '#78350f');
       pRect(ctx, sx + 10, p.y + 2, 12, 2, '#94a3b8');
-      pRect(ctx, sx + 34, p.y + 1, 6, 6, '#fbbf24'); // Frothy Tankard
+      pRect(ctx, sx + 34, p.y + 1, 6, 6, '#fbbf24');
     } else if (p.kind === 'guild_reception') {
       pRect(ctx, sx, p.y + 6, p.w, p.h - 6, '#451a03');
       pRect(ctx, sx - 2, p.y + 4, p.w + 4, 4, '#b45309');
-      pRect(ctx, sx + 8, p.y - 1, 14, 5, '#fef3c7'); // Quest Parchments
-      pRect(ctx, sx + 26, p.y - 4, 8, 8, '#38bdf8'); // Guild Bell / Crystal
+      pRect(ctx, sx + 8, p.y - 1, 14, 5, '#fef3c7');
+      pRect(ctx, sx + 26, p.y - 4, 8, 8, '#38bdf8');
+    } else if (p.kind === 'guild_floor2_reception') {
+      pRect(ctx, sx, p.y + 6, p.w, p.h - 6, '#581c87');
+      pRect(ctx, sx - 2, p.y + 4, p.w + 4, 4, '#fbbf24');
+      pRect(ctx, sx + 10, p.y - 2, 16, 6, '#fef08a');
+      pRect(ctx, sx + 32, p.y - 5, 10, 9, '#f43f5e');
+    } else if (p.kind === 'guild_stairs') {
+      // Grand Carved Oak Staircase ascending rightwards up to 2nd Floor
+      pRect(ctx, sx, p.y, p.w, p.h, '#2b1206');
+      for (let st = 0; st < 7; st++) {
+        const syStep = p.y + p.h - (st + 1) * 11;
+        const sxStep = sx + st * 8;
+        pRect(ctx, sxStep, syStep, p.w - st * 8 + 12, 11, st % 2 === 0 ? '#78350f' : '#92400e');
+        pRect(ctx, sxStep, syStep, 10, 2, '#fbbf24');
+      }
+      pRect(ctx, sx + 4, p.y + 4, 4, p.h - 4, '#b45309');
+      pRect(ctx, sx + p.w - 6, p.y - 14, 4, 18, '#fbbf24');
     } else if (p.kind === 'wardrobe_counter') {
       pRect(ctx, sx, p.y + 6, p.w, p.h - 6, '#500724');
       pRect(ctx, sx - 2, p.y + 4, p.w + 4, 4, '#ec4899');
-      pRect(ctx, sx + 8, p.y - 4, 12, 8, '#f472b6'); // Folded silk bolts
+      pRect(ctx, sx + 8, p.y - 4, 12, 8, '#f472b6');
       pRect(ctx, sx + 24, p.y - 2, 10, 6, '#fbbf24');
-    } else if (p.kind === 'bulletin_board') {
-      pRect(ctx, sx + 3, p.y + 4, 3, p.h - 4, '#78350f');
-      pRect(ctx, sx + p.w - 6, p.y + 4, 3, p.h - 4, '#78350f');
-      pRect(ctx, sx, p.y, p.w, p.h - 10, '#451a03');
-      pRect(ctx, sx + 2, p.y + 2, p.w - 4, p.h - 14, '#b45309');
-      pRect(ctx, sx + 5, p.y + 5, 8, 9, '#fef3c7');
-      pRect(ctx, sx + 16, p.y + 6, 9, 8, '#fde68a');
-      pRect(ctx, sx + 28, p.y + 5, 7, 10, '#fecaca');
+    } else if (p.kind === 'potion_counter') {
+      // Alchemist Glowing Crystal Counter
+      pRect(ctx, sx, p.y + 6, p.w, p.h - 6, '#1e1b4b');
+      pRect(ctx, sx - 2, p.y + 4, p.w + 4, 4, '#a855f7');
+      pRect(ctx, sx + 8, p.y - 5, 8, 9, '#ef4444');
+      pRect(ctx, sx + 22, p.y - 6, 8, 10, '#06b6d4');
+      pRect(ctx, sx + 36, p.y - 4, 8, 8, '#a855f7');
+      pRect(ctx, sx + 50, p.y - 5, 8, 9, '#10b981');
+    } else if (p.kind === 'weapons_counter') {
+      // Blacksmith Forge Counter & Anvil
+      pRect(ctx, sx, p.y + 6, p.w, p.h - 6, '#431407');
+      pRect(ctx, sx - 2, p.y + 4, p.w + 4, 4, '#f59e0b');
+      pRect(ctx, sx + 12, p.y - 6, 20, 10, '#334155');
+      pRect(ctx, sx + 44, p.y - 3, 18, 7, '#fb923c');
     }
   }
 
@@ -490,10 +526,13 @@ export function drawWarrior(
   peerColor = '#60a5fa',
   peerName?: string,
   customization: WarriorCustomization = DEFAULT_WARRIOR_CUSTOMIZATION,
+  comboSubStep = 0,
+  isSpinDashAttack = false,
+  simTime = 0,
 ) {
   const sx = Math.round(x - camX);
   const sy = Math.round(y);
-  if (sx < -44 || sx > PIXEL_W + 44) return;
+  if (sx < -52 || sx > PIXEL_W + 52) return;
 
   // Ground contact shadow
   ctx.save();
@@ -525,6 +564,16 @@ export function drawWarrior(
   const plumeShade = shadeColor(plumeColor, -0.32);
   const visorGlow = isPeer ? '#38bdf8' : customization.visorColor;
 
+  // Dynamic body lean & rotation during Spinning Poke Dash or Triple Slash!
+  if (isSpinDashAttack) {
+    ctx.translate(0, -13);
+    ctx.rotate(simTime * 28);
+    ctx.translate(0, 13);
+  } else if (attackPhase === 'active') {
+    const lean = comboStep === 2 ? 0.22 : comboStep === 3 ? 0.14 : 0.1;
+    ctx.rotate(lean);
+  }
+
   // Multi-segment billowing anime scarf/cape with 1px ink trim & gold hem
   pRect(ctx, -12 - cloakWave1, -21 + breath, 9, 12, '#090609');
   pRect(ctx, -11 - cloakWave1, -20 + breath, 7, 10, capeColor);
@@ -550,7 +599,6 @@ export function drawWarrior(
   pRect(ctx, 1 - stride, -3, 6, 3, '#1e293b');
   pRect(ctx, 4 - stride, -2, 3, 1, armorHi);
 
-  // Outfit variation for Wardrobe Shop styles!
   const outfitStyle = customization.outfitStyle ?? 'knight_plate';
   const headgearStyle = customization.headgearStyle ?? 'helm';
 
@@ -579,17 +627,13 @@ export function drawWarrior(
     pRect(ctx, -5, -18 + breath, 5, 6, armorHi);
     pRect(ctx, 0, -18 + breath, 5, 7, armorMid);
   }
-  pRect(ctx, -4, -18 + breath, 2, 2, '#78350f');
-  pRect(ctx, -2, -16 + breath, 2, 2, '#78350f');
-  pRect(ctx, 0, -14 + breath, 2, 2, '#78350f');
   pRect(ctx, -2, -16 + breath, 2, 2, '#fbbf24');
   pRect(ctx, -7, -20 + breath, 6, 5, '#d97706');
   pRect(ctx, -6, -20 + breath, 4, 2, '#fde047');
-  pRect(ctx, -6, -17 + breath, 5, 1, armorMain);
   pRect(ctx, -6, -10 + breath, 12, 2, '#b45309');
   pRect(ctx, -1, -10 + breath, 3, 2, '#fef08a');
 
-  // Headgear (Helm / Beret / Bandana / Circlet) + Royal Crown!
+  // Headgear
   if (headgearStyle === 'beret') {
     pRect(ctx, -6, -27 + breath, 11, 8, '#f3cba5');
     pRect(ctx, 1, -24 + breath, 2, 2, '#0f172a');
@@ -610,19 +654,14 @@ export function drawWarrior(
     pRect(ctx, -6, -28 + breath, 12, 9, armorMain);
     pRect(ctx, -5, -28 + breath, 9, 2, armorHi);
     pRect(ctx, -6, -26 + breath, 12, 1, '#d97706');
-    pRect(ctx, -5, -26 + breath, 2, 7, armorMid);
     pRect(ctx, -1, -24 + breath, 7, 3, '#0f172a');
     pRect(ctx, 1, -23 + breath, 3, 2, isAnimePose ? '#fef08a' : visorGlow);
-    pRect(ctx, 2, -23 + breath, 1, 1, '#ffffff');
-    pRect(ctx, 2, -20 + breath, 1, 1, '#090609');
-    pRect(ctx, 4, -20 + breath, 1, 1, '#090609');
     pRect(ctx, -5, -33 + breath, 8, 5, '#090609');
     pRect(ctx, -4, -32 + breath, 6, 4, plumeColor);
     pRect(ctx, -9 - Math.round(cloakWave1 * 0.5), -31 + breath, 6, 3, plumeShade);
   }
 
   if (customization.crownEquipped) {
-    // Glowing S-Rank Sovereign Royal Crown!
     const cy = headgearStyle === 'helm' ? -36 : -34;
     pRect(ctx, -5, cy + breath, 10, 4, '#f59e0b');
     pRect(ctx, -5, cy - 3 + breath, 2, 3, '#fbbf24');
@@ -631,75 +670,160 @@ export function drawWarrior(
     pRect(ctx, 0, cy + 1 + breath, 2, 2, '#e11d48');
   }
 
-  // Detailed 6-style sword blades & multi-layered anime slash arc (including OP Fire Sword!)
+  // Distinct Weapon Rendering & Full Choreography (3-Arc Slash / Double Poke / Fast Triple Slash / Spin-Dash Wind Poke!)
   const weapon = WEAPONS[weaponId];
-  if (attackPhase === 'active') {
-    const slashY = -27 + (comboStep % 2) * 5;
-    if (weaponId === 'crescent') {
+  const vLen = weapon.visualLength;
+  const vWid = weapon.visualWidth;
+
+  if (isSpinDashAttack) {
+    // BURSTING SPINNING POKE DASH with swirling wind vortex ribbons & tornado cones!
+    const spinOsc = Math.sin(simTime * 42);
+    const windLen = Math.round(weapon.range * 1.85);
+    // Outer swirling wind ribbons
+    ctx.strokeStyle = '#34d399';
+    ctx.lineWidth = 2.5;
+    for (let ring = 0; ring < 3; ring++) {
+      ctx.beginPath();
+      ctx.ellipse(12 + ring * 14, -14 + spinOsc * 2, 8 + ring * 3, 14 - ring * 2, simTime * 16 + ring, 0, Math.PI * 1.6);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(110, 231, 183, 0.35)';
+    ctx.beginPath();
+    ctx.moveTo(4, -24);
+    ctx.lineTo(windLen + 10, -14);
+    ctx.lineTo(4, -4);
+    ctx.closePath();
+    ctx.fill();
+    // Spinning drilled weapon core
+    pRect(ctx, 4, -15 - Math.round(vWid / 2), vLen + 14, vWid + 1, weapon.accentColor);
+    pRect(ctx, 6, -14 - Math.round(vWid / 2), vLen + 12, Math.max(2, vWid - 1), weapon.color);
+    pRect(ctx, 10, -14, windLen, 2, '#ffffff');
+  } else if (attackPhase === 'active') {
+    if (comboStep === 2) {
+      // DOUBLE POKE COMBO (extended long-range piercing twin thrusts!)
+      const pokeLen = Math.round(weapon.range * 1.48);
+      const yShift = comboSubStep === 0 ? -18 : -11;
+      const yGhost = comboSubStep === 0 ? -11 : -18;
+      // Ghost previous thrust streak
       ctx.fillStyle = weapon.accentColor;
-      ctx.fillRect(5, slashY - 4, weapon.range, 6);
-      ctx.fillRect(-weapon.range * 0.55, slashY + 4, weapon.range * 0.65, 5);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(8, slashY - 2, weapon.range - 6, 2);
-    } else if (weaponId === 'rapier') {
+      ctx.globalAlpha = 0.48;
+      ctx.fillRect(6, yGhost, pokeLen - 6, 3);
+      ctx.globalAlpha = 1;
+      // Primary extended piercing thrust + shockwave rings
       ctx.fillStyle = weapon.accentColor;
-      ctx.fillRect(6, slashY + 1, weapon.range + 4, 3);
-      ctx.fillRect(10, slashY - 4, weapon.range - 4, 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(8, slashY + 2, weapon.range, 1);
-    } else if (weaponId === 'katana') {
-      ctx.fillStyle = weapon.accentColor;
-      ctx.fillRect(4, slashY - 1, weapon.range + 6, 7);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(6, slashY + 1, weapon.range + 2, 2);
-    } else if (weaponId === 'fire_sword') {
-      // Strong crimson + scorching orange wide inferno slash arc + ember sparks!
-      ctx.fillStyle = '#dc2626';
-      ctx.fillRect(4, slashY - 3, weapon.range + 6, 13);
-      ctx.fillStyle = '#fb923c';
-      ctx.fillRect(6, slashY, weapon.range + 2, 8);
-      ctx.fillStyle = '#fef08a';
-      ctx.fillRect(9, slashY + 2, weapon.range - 8, 3);
-    } else {
-      ctx.fillStyle = weapon.accentColor;
-      ctx.fillRect(5, slashY, weapon.range - 2, 9);
+      ctx.fillRect(6, yShift - 2, pokeLen, vWid + 4);
       ctx.fillStyle = weapon.color;
-      ctx.fillRect(7, slashY + 2, weapon.range - 6, 5);
+      ctx.fillRect(8, yShift - 1, pokeLen - 2, vWid + 1);
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(10, slashY + 3, weapon.range - 14, 2);
+      ctx.fillRect(10, yShift, pokeLen - 4, 2);
+      ctx.strokeStyle = weapon.color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(18, yShift + 1, 4, 11, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (comboStep === 3) {
+      // VERY FAST TRIPLE SLASH: Up-to-Down (0), Left-to-Right (1), Right-to-Left (2)
+      const reach = weapon.range + 10;
+      ctx.lineCap = 'round';
+      if (comboSubStep === 0) {
+        // Swing 1: Up-to-Down Vertical Overhead Cleave!
+        ctx.strokeStyle = weapon.accentColor;
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.arc(8, -14, reach * 0.72, -Math.PI * 0.65, Math.PI * 0.45);
+        ctx.stroke();
+        ctx.strokeStyle = weapon.color;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(8, -14, reach * 0.72, -Math.PI * 0.6, Math.PI * 0.4);
+        ctx.stroke();
+        pRect(ctx, 10, -28, vWid + 2, vLen + 4, '#ffffff');
+      } else if (comboSubStep === 1) {
+        // Swing 2: Left-to-Right Sweeping Horizontal Crescent!
+        ctx.strokeStyle = weapon.accentColor;
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(-4, -22);
+        ctx.quadraticCurveTo(reach * 0.55, -28, reach + 6, -13);
+        ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, -20);
+        ctx.quadraticCurveTo(reach * 0.55, -26, reach + 4, -13);
+        ctx.stroke();
+      } else {
+        // Swing 3: Right-to-Left Reverse Backhand Crescent!
+        ctx.strokeStyle = weapon.accentColor;
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(reach + 6, -24);
+        ctx.quadraticCurveTo(reach * 0.45, -4, -6, -12);
+        ctx.stroke();
+        ctx.strokeStyle = weapon.color;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(reach + 4, -23);
+        ctx.quadraticCurveTo(reach * 0.45, -6, -4, -13);
+        ctx.stroke();
+      }
+    } else {
+      // Combo Step 1: Detailed 3-frame animated sword slash choreography (no poke!)
+      const reach = weapon.range + 4;
+      const startAng = comboSubStep === 0 ? -1.4 : comboSubStep === 1 ? -0.6 : 0.1;
+      const endAng = startAng + 1.55;
+      ctx.strokeStyle = weapon.accentColor;
+      ctx.lineWidth = 8 + Math.min(3, vWid);
+      ctx.beginPath();
+      ctx.arc(6, -15, reach * 0.75, startAng, endAng);
+      ctx.stroke();
+      ctx.strokeStyle = weapon.color;
+      ctx.lineWidth = 4 + Math.min(2, Math.floor(vWid / 2));
+      ctx.beginPath();
+      ctx.arc(6, -15, reach * 0.75, startAng + 0.12, endAng);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(6, -15, reach * 0.78, startAng + 0.2, endAng);
+      ctx.stroke();
     }
   } else if (attackPhase === 'windup') {
-    pRect(ctx, -10, -26 + breath, 4, 16, weapon.color);
-    pRect(ctx, -9, -25 + breath, 1, 13, weaponId === 'fire_sword' ? '#fef08a' : '#ffffff');
-    pRect(ctx, -11, -13 + breath, 6, 2, weapon.accentColor);
+    pRect(ctx, -10, -8 - vLen, vWid + 1, vLen, weapon.color);
+    pRect(ctx, -9, -7 - vLen, 1, vLen - 3, '#ffffff');
+    pRect(ctx, -12, -13 + breath, vWid + 5, 2, weapon.accentColor);
   } else if (isAnimePose) {
-    pRect(ctx, 4, -27 + breath, 3, 19, weapon.color);
-    pRect(ctx, 5, -26 + breath, 1, 16, '#ffffff');
+    pRect(ctx, 4, -12 - vLen, vWid, vLen, weapon.color);
+    pRect(ctx, 5, -11 - vLen, 1, vLen - 3, '#ffffff');
     pRect(ctx, 2, -13 + breath, 7, 2, weapon.accentColor);
     const sparkY = -25 + Math.round(((quirkCycle - 3.6) / 1.4) * 14);
     drawPixelSparkle(ctx, 5, sparkY, 2, '#fef08a');
   } else {
-    if (weaponId === 'katana') {
-      pRect(ctx, 4, -21 + breath, 2, 15, weapon.color);
-      pRect(ctx, 5, -23 + breath, 2, 4, '#ffffff');
-      pRect(ctx, 3, -12 + breath, 5, 2, '#fbbf24');
-    } else if (weaponId === 'crescent') {
-      pRect(ctx, 4, -21 + breath, 2, 15, weapon.color);
-      pRect(ctx, 6, -22 + breath, 3, 6, '#ffffff');
-      pRect(ctx, 3, -12 + breath, 5, 2, weapon.accentColor);
-    } else if (weaponId === 'fire_sword') {
-      const fJitter = Math.round(Math.sin(idleTimer * 18) * 1);
-      pRect(ctx, 3, -24 + breath, 4, 17, '#dc2626');
-      pRect(ctx, 4, -23 + breath, 2, 14, '#fb923c');
-      pRect(ctx, 4, -22 + breath + fJitter, 1, 11, '#fef08a');
-      pRect(ctx, 2, -12 + breath, 6, 2, '#fbbf24');
-    } else {
-      pRect(ctx, 4, -20 + breath, 3, 14, weapon.color);
-      pRect(ctx, 5, -19 + breath, 1, 11, '#ffffff');
-      pRect(ctx, 3, -12 + breath, 5, 2, weapon.accentColor);
+    // Draw equipped weapon at its custom size, color & special effect glint!
+    const topY = -10 - vLen + breath;
+    pRect(ctx, 3, topY - 1, vWid + 2, vLen + 2, '#090609');
+    pRect(ctx, 4, topY, vWid, vLen, weapon.color);
+    if (vWid >= 2) {
+      pRect(ctx, 4 + Math.floor(vWid / 2), topY + 2, 1, Math.max(4, vLen - 4), '#ffffff');
     }
-    if (idleTimer > 1 && Math.floor(idleTimer * 2) % 6 === 0) {
-      drawPixelSparkle(ctx, 5, -16 + breath, 1, weaponId === 'fire_sword' ? '#fb923c' : '#ffffff');
+    pRect(ctx, 2, -12 + breath, vWid + 5, 2, weapon.accentColor);
+
+    if (weapon.specialEffect !== 'none' && Math.floor(idleTimer * 6) % 2 === 0) {
+      const fxCol =
+        weapon.specialEffect === 'burn'
+          ? '#fb923c'
+          : weapon.specialEffect === 'frost'
+            ? '#7dd3fc'
+            : weapon.specialEffect === 'lightning'
+              ? '#fde047'
+              : weapon.specialEffect === 'lifesteal'
+                ? '#f43f5e'
+                : weapon.specialEffect === 'venom'
+                  ? '#bef264'
+                  : weapon.specialEffect === 'holy_beam'
+                    ? '#fef08a'
+                    : weapon.accentColor;
+      drawPixelSparkle(ctx, 4 + Math.floor(vWid / 2), topY + Math.floor(vLen * 0.35), 2, fxCol);
     }
   }
 
@@ -734,10 +858,20 @@ export function drawEnemy(
   const sy = Math.round(enemy.y);
   if (sx < -40 || sx > PIXEL_W + 40) return;
 
-  // Ground contact shadow
+  const isBoss = Boolean(enemy.isDungeonBoss);
+  const scaleFactor = isBoss ? 1.4 : 1;
+
+  // Ground contact shadow & Dungeon Boss pulsing halo
   ctx.save();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
   ctx.fillRect(sx + 2, sy + enemy.h - 2, Math.max(10, enemy.w - 4), 3);
+  if (isBoss && enemy.state !== 'ko') {
+    const auraR = 24 + Math.sin(time * 7) * 3;
+    ctx.fillStyle = enemy.biome === 'volcano' ? 'rgba(239, 68, 68, 0.28)' : 'rgba(168, 85, 247, 0.28)';
+    ctx.beginPath();
+    ctx.arc(sx + enemy.w / 2, sy + enemy.h / 2, auraR, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 
   ctx.save();
@@ -746,7 +880,7 @@ export function drawEnemy(
     ctx.globalAlpha = Math.max(0, enemy.koTimer / 0.32);
     ctx.rotate(enemy.facing * 0.9);
   }
-  ctx.scale(enemy.facing, 1);
+  ctx.scale(enemy.facing * scaleFactor, scaleFactor);
 
   const flash = enemy.hitFlash > 0;
   const windupPulse = enemy.state === 'windup' && Math.floor(time * 20) % 2 === 0;
@@ -975,13 +1109,51 @@ export function drawEnemy(
     pRect(ctx, 2, -7, 5, 7, '#292524');
   }
 
+  // Strong Dungeon Boss golden crown & horned war-crest
+  if (isBoss) {
+    pRect(ctx, -7, -36 + idleBob, 14, 4, '#fbbf24');
+    pRect(ctx, -7, -40 + idleBob, 3, 4, '#fef08a');
+    pRect(ctx, -2, -42 + idleBob, 4, 6, '#fbbf24');
+    pRect(ctx, 4, -40 + idleBob, 3, 4, '#fef08a');
+  }
+
+  // Weapon status visual indicators (Burn / Frost / Venom)
+  if ((enemy.statusBurnTimer ?? 0) > 0) {
+    const fl = Math.round(Math.sin(time * 22) * 2);
+    pRect(ctx, -7, -14 + fl, 4, 5, '#f97316');
+    pRect(ctx, 3, -18 - fl, 4, 5, '#fde047');
+  }
+  if ((enemy.statusFrostTimer ?? 0) > 0) {
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-11, -33, 22, 33);
+    pRect(ctx, -9, -12, 3, 3, '#bae6fd');
+    pRect(ctx, 6, -24, 3, 3, '#bae6fd');
+  }
+  if ((enemy.statusVenomTimer ?? 0) > 0) {
+    const drip = Math.round((time * 18) % 6);
+    pRect(ctx, -5, -20 + drip, 3, 3, '#84cc16');
+    pRect(ctx, 4, -14 + ((drip + 3) % 6), 3, 3, '#a3e635');
+  }
+
   if (frozen) {
     ctx.strokeStyle = '#34d399';
     ctx.strokeRect(-10, -30, 20, 30);
   }
   ctx.restore();
 
-  if (enemy.hp < enemy.maxHp && enemy.state !== 'ko') {
+  if (isBoss && enemy.state !== 'ko') {
+    const barW = Math.max(46, enemy.w + 22);
+    const bx = Math.round(sx + enemy.w / 2 - barW / 2);
+    ctx.font = 'bold 6px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(15, 6, 12, 0.85)';
+    ctx.fillRect(bx - 6, sy - 20, barW + 12, 9);
+    ctx.fillStyle = '#fde047';
+    ctx.fillText(`★ ${enemy.name}`, sx + enemy.w / 2, sy - 13);
+    pRect(ctx, bx, sy - 9, barW, 4, '#09060b');
+    pRect(ctx, bx + 1, sy - 8, Math.round(((barW - 2) * enemy.hp) / Math.max(1, enemy.maxHp)), 2, '#f43f5e');
+  } else if (enemy.hp < enemy.maxHp && enemy.state !== 'ko') {
     pRect(ctx, sx, sy - 6, enemy.w, 3, '#0f172a');
     pRect(ctx, sx, sy - 6, (enemy.hp / enemy.maxHp) * enemy.w, 3, '#ef4444');
   }

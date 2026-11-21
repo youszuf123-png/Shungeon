@@ -1705,21 +1705,54 @@ export function getBakedItemIcon(itemId: string): HTMLCanvasElement {
   px(ctx, 0, 0, 32, 32, '#120a0e');
   px(ctx, 1, 1, 30, 30, '#1f1218');
 
-  if (itemId === 'crimson_vial') {
-    // Cork, gold neck ring, faceted ruby potion flask & bubble highlights
+  if (itemId === 'crimson_vial' || itemId === 'hi_ruby_potion' || itemId === 'royal_elixir_hp' || itemId === 'fury_draught' || itemId === 'titan_crimson_tonic') {
+    const bodyDark =
+      itemId === 'hi_ruby_potion'
+        ? '#881337'
+        : itemId === 'royal_elixir_hp'
+          ? '#064e3b'
+          : itemId === 'fury_draught'
+            ? '#4c1d95'
+            : itemId === 'titan_crimson_tonic'
+              ? '#164e63'
+              : '#7f1d1d';
+    const liqMid =
+      itemId === 'hi_ruby_potion'
+        ? '#f43f5e'
+        : itemId === 'royal_elixir_hp'
+          ? '#10b981'
+          : itemId === 'fury_draught'
+            ? '#a855f7'
+            : itemId === 'titan_crimson_tonic'
+              ? '#06b6d4'
+              : '#ef4444';
+    const liqHi =
+      itemId === 'hi_ruby_potion'
+        ? '#fda4af'
+        : itemId === 'royal_elixir_hp'
+          ? '#6ee7b7'
+          : itemId === 'fury_draught'
+            ? '#e879f9'
+            : itemId === 'titan_crimson_tonic'
+              ? '#67e8f9'
+              : '#f87171';
     px(ctx, 13, 3, 6, 4, '#09060b');
     px(ctx, 14, 4, 4, 3, '#d97706');
     px(ctx, 11, 7, 10, 4, '#fbbf24');
     px(ctx, 12, 8, 8, 2, '#94a3b8');
-    // Flask body outline + glass reflection
     px(ctx, 8, 12, 16, 15, '#09060b');
     px(ctx, 6, 15, 20, 10, '#09060b');
-    px(ctx, 7, 15, 18, 10, '#7f1d1d');
-    px(ctx, 9, 13, 14, 13, '#991b1b');
-    px(ctx, 8, 17, 16, 7, '#ef4444');
-    px(ctx, 10, 19, 12, 4, '#f87171');
-    px(ctx, 9, 14, 3, 8, '#fecaca'); // Glass shine
-    px(ctx, 18, 20, 2, 2, '#fef08a'); // Magic shimmer
+    px(ctx, 7, 15, 18, 10, bodyDark);
+    px(ctx, 9, 13, 14, 13, bodyDark);
+    px(ctx, 8, 17, 16, 7, liqMid);
+    px(ctx, 10, 19, 12, 4, liqHi);
+    px(ctx, 9, 14, 3, 8, '#ffffff');
+    px(ctx, 18, 20, 3, 3, '#fef08a');
+    if (itemId === 'fury_draught' || itemId === 'titan_crimson_tonic') {
+      // Glowing lightning / power sparks on Damage-Boost flasks
+      px(ctx, 4, 9, 3, 2, liqHi);
+      px(ctx, 25, 10, 3, 2, '#fde047');
+    }
   } else if (itemId === 'royal_ember') {
     // Crown-wax blazing amber ember crystal
     px(ctx, 13, 4, 6, 4, '#fef08a');
@@ -1825,7 +1858,7 @@ export function getBakedItemIcon(itemId: string): HTMLCanvasElement {
 }
 
 /**
- * Baked 32x32 pixel-art sword style sprites for Weapons inventory tab.
+ * Baked 32x32 pixel-art sword style sprites for Weapons inventory tab & Armory Showcase.
  */
 export function getBakedWeaponIcon(weaponId: WeaponId): HTMLCanvasElement {
   const existing = weaponIconCache.get(weaponId);
@@ -1841,40 +1874,56 @@ export function getBakedWeaponIcon(weaponId: WeaponId): HTMLCanvasElement {
   px(ctx, 0, 0, 32, 32, '#120a0e');
   px(ctx, 1, 1, 30, 30, '#1c1016');
 
-  if (weaponId === 'katana') {
-    for (let i = 0; i < 20; i++) {
+  if (weaponId === 'katana' || weaponId === 'thunder_odachi') {
+    const len = weaponId === 'thunder_odachi' ? 22 : 20;
+    const thick = weaponId === 'thunder_odachi' ? 4 : 3;
+    for (let i = 0; i < len; i++) {
       const curve = Math.floor((i * i) / 95);
-      px(ctx, 7 + i, 24 - i - curve, 3, 3, '#09060b');
-      px(ctx, 8 + i, 24 - i - curve, 2, 2, weapon.color);
-      px(ctx, 8 + i, 23 - i - curve, 1, 1, '#ffffff');
+      px(ctx, 6 + i, 24 - i - curve, thick + 1, thick + 1, '#09060b');
+      px(ctx, 7 + i, 24 - i - curve, thick, thick, weapon.color);
+      px(ctx, 7 + i, 23 - i - curve, 1, 1, '#ffffff');
     }
-    px(ctx, 8, 20, 6, 2, '#fbbf24');
-    px(ctx, 5, 24, 4, 4, '#7c3aed');
-  } else if (weaponId === 'crescent') {
+    px(ctx, 7, 20, 7, 2, weapon.accentColor);
+    px(ctx, 4, 24, 4, 4, weapon.accentColor);
+  } else if (weaponId === 'crescent' || weaponId === 'crimson_reaper') {
     for (let i = 0; i < 18; i++) {
       px(ctx, 6 + i, 23 - i, 3, 3, weapon.color);
-      px(ctx, 8 + i, 25 - i, 2, 2, '#93c5fd');
+      px(ctx, 8 + i, 25 - i, 2, 2, weapon.accentColor);
     }
-    px(ctx, 18, 5, 8, 8, '#ffffff');
-    px(ctx, 20, 7, 5, 5, '#1c1016');
-    px(ctx, 5, 23, 5, 4, '#3b82f6');
-  } else if (weaponId === 'runeblade') {
-    for (let i = 0; i < 18; i++) {
-      px(ctx, 7 + i, 22 - i, 5, 5, '#09060b');
-      px(ctx, 8 + i, 22 - i, 3, 3, weapon.color);
+    px(ctx, 16, 4, 11, 8, weapon.color);
+    px(ctx, 19, 7, 6, 5, '#1c1016');
+    px(ctx, 5, 23, 5, 4, weapon.accentColor);
+  } else if (weaponId === 'runeblade' || weaponId === 'solar_excalibur') {
+    for (let i = 0; i < 19; i++) {
+      px(ctx, 6 + i, 22 - i, 6, 6, '#09060b');
+      px(ctx, 7 + i, 22 - i, 4, 4, weapon.color);
+      px(ctx, 8 + i, 22 - i, 2, 2, '#ffffff');
     }
-    px(ctx, 14, 15, 3, 3, '#e879f9');
-    px(ctx, 19, 10, 3, 3, '#c084fc');
-    px(ctx, 6, 20, 7, 4, '#dc2626');
+    px(ctx, 14, 15, 3, 3, weapon.accentColor);
+    px(ctx, 6, 20, 8, 4, weapon.accentColor);
     px(ctx, 4, 24, 4, 4, '#fbbf24');
-  } else if (weaponId === 'rapier') {
-    for (let i = 0; i < 20; i++) {
-      px(ctx, 7 + i, 24 - i, 2, 2, weapon.color);
-      px(ctx, 7 + i, 23 - i, 1, 1, '#ffffff');
+  } else if (weaponId === 'rapier' || weaponId === 'emerald_zephyr') {
+    for (let i = 0; i < 21; i++) {
+      px(ctx, 6 + i, 24 - i, 2, 2, weapon.color);
+      px(ctx, 6 + i, 23 - i, 1, 1, '#ffffff');
     }
     px(ctx, 6, 20, 7, 7, '#09060b');
-    px(ctx, 7, 21, 5, 5, '#fbbf24');
+    px(ctx, 7, 21, 5, 5, weapon.accentColor);
     px(ctx, 8, 22, 2, 2, '#fef08a');
+  } else if (weaponId === 'azure_glaive') {
+    for (let i = 0; i < 20; i++) {
+      px(ctx, 5 + i, 24 - i, 3, 3, '#475569');
+    }
+    px(ctx, 19, 4, 9, 9, '#09060b');
+    px(ctx, 20, 5, 7, 7, weapon.color);
+    px(ctx, 21, 6, 4, 4, '#e0f2fe');
+  } else if (weaponId === 'venom_twinblade') {
+    for (let i = 0; i < 15; i++) {
+      px(ctx, 8 + i, 22 - i, 4, 4, '#09060b');
+      px(ctx, 9 + i, 22 - i, 2, 2, weapon.color);
+    }
+    px(ctx, 19, 9, 4, 4, '#bef264');
+    px(ctx, 7, 19, 5, 3, weapon.accentColor);
   } else if (weaponId === 'fire_sword') {
     // OP Fire Sword: serrated blazing crimson-orange flame blade with white-hot core!
     px(ctx, 2, 2, 28, 28, '#1a0606');

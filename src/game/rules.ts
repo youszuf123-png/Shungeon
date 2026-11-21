@@ -57,7 +57,13 @@ export function createInitialPlayer(): PlayerState {
     attackPhase: 'none',
     attackTimer: 0,
     comboStep: 0,
+    comboSubStep: 0,
+    comboSubTimer: 0,
     comboWindowTimer: 0,
+    isSpinDashAttack: false,
+    spinDashTimer: 0,
+    damageBoostMultiplier: 1,
+    damageBoostTimer: 0,
     invulnTimer: 0,
     parryTimer: 0,
     chronoFreezeTimer: 0,
@@ -116,7 +122,8 @@ export function stepPlayerPhysics(
   }
 
   // Smooth horizontal acceleration & momentum preservation for long dashes
-  const moveSpeed = MOVE_SPEED + player.stats.speed * 6;
+  const hotSpringSpeedMult = (player.hotSpringTimer ?? 0) > 0 ? 1.18 : 1;
+  const moveSpeed = (MOVE_SPEED + player.stats.speed * 6) * hotSpringSpeedMult;
   const targetVx = moveDir * moveSpeed;
   const isDashing =
     Math.abs(player.vx) > moveSpeed + 20 &&
@@ -217,6 +224,23 @@ export function stepPlayerPhysics(
   player.comboWindowTimer = Math.max(0, player.comboWindowTimer - dt);
   if (player.comboWindowTimer === 0 && player.attackPhase === 'none') {
     player.comboStep = 0;
+    player.comboSubStep = 0;
+  }
+  if (player.spinDashTimer > 0) {
+    player.spinDashTimer = Math.max(0, player.spinDashTimer - dt);
+    if (player.spinDashTimer === 0) {
+      player.isSpinDashAttack = false;
+    }
+  }
+  if (player.damageBoostTimer > 0) {
+    player.damageBoostTimer = Math.max(0, player.damageBoostTimer - dt);
+    if (player.damageBoostTimer === 0) {
+      player.damageBoostMultiplier = 1;
+    }
+  }
+  if ((player.hotSpringTimer ?? 0) > 0) {
+    player.hotSpringTimer = Math.max(0, (player.hotSpringTimer ?? 0) - dt);
+    player.hp = Math.min(player.maxHp, player.hp + 4 * dt);
   }
 
   for (let i = 0; i < 3; i++) {
@@ -241,6 +265,32 @@ export function triggerPlayerDash(player: PlayerState): boolean {
   player.vy = Math.min(player.vy, 0);
   player.squashX = 1.25;
   player.squashY = 0.8;
+  return true;
+}
+
+/**
+ * Triggered when Slash + Dash are pressed rapidly together:
+ * propels the warrior forward in a bursting spinning poke with swirling wind vortexes.
+ */
+export function triggerSpinPokeDash(player: PlayerState): boolean {
+  if (player.dashCooldown > 0 && !player.isSpinDashAttack && player.stamina < DASH_STAMINA_COST) {
+    return false;
+  }
+  player.stamina = Math.max(0, player.stamina - DASH_STAMINA_COST);
+  player.dashCooldown = DASH_COOLDOWN_SECONDS;
+  player.isSpinDashAttack = true;
+  player.spinDashTimer = 0.34;
+  player.attackPhase = 'active';
+  player.attackTimer = 0.32;
+  player.comboStep = 2;
+  player.comboSubStep = 0;
+  player.comboSubTimer = 0.08;
+  player.comboWindowTimer = 0.85;
+  player.invulnTimer = Math.max(player.invulnTimer, 0.34);
+  player.vx = player.facing * (470 + player.stats.speed * 9);
+  player.vy = Math.min(player.vy, -24);
+  player.squashX = 1.34;
+  player.squashY = 0.76;
   return true;
 }
 
@@ -274,30 +324,61 @@ export function recordBossFightProgress(currentStreak: number): {
 export function startWeaponAttack(player: PlayerState): boolean {
   if (player.attackPhase !== 'none') return false;
   const weapon = WEAPONS[player.equippedWeapon];
-  player.attackPhase = 'windup';
-  player.attackTimer = weapon.windup;
-  player.comboStep = (player.comboStep % weapon.comboHits) + 1;
-  player.comboWindowTimer = 0.65;
+  player.isSpinDashAttack = false;
+  player.spinDashTimer = 0;
+  player.comboStep = (player.comboStep % 3) + 1;
+  player.comboSubStep = 0;
+  player.comboWindowTimer = 0.82;
 
-  // Style-specific forward step
-  if (weapon.id === 'rapier' || weapon.id === 'katana') {
-    player.vx += player.facing * 95;
-  } else if (weapon.id === 'crescent') {
-    player.vx += player.facing * 60;
+  if (player.comboStep === 2) {
+    // Double Poke Combo: crisp quick windup + twin long-range thrusts
+    player.attackPhase = 'windup';
+    player.attackTimer = Math.min(0.05, weapon.windup * 0.6);
+    player.comboSubTimer = 0.085;
+    player.vx += player.facing * 110;
+  } else if (player.comboStep === 3) {
+    // Fast Triple Slash (Up-to-Down, Left-to-Right, Right-to-Left)
+    player.attackPhase = 'windup';
+    player.attackTimer = 0.035;
+    player.comboSubTimer = 0.07;
+    player.vx += player.facing * 85;
+  } else {
+    // Combo Step 1: 3-arc choreographed primary sword slash
+    player.attackPhase = 'windup';
+    player.attackTimer = weapon.windup;
+    player.comboSubTimer = Math.max(0.045, weapon.active * 0.34);
+    player.vx += player.facing * (weapon.id === 'rapier' || weapon.id === 'katana' ? 88 : 52);
   }
   return true;
 }
 
 export function computeWeaponHitbox(player: PlayerState) {
   const weapon = WEAPONS[player.equippedWeapon];
-  const isSpin = weapon.id === 'crescent';
-  const w = isSpin ? weapon.range * 1.7 : weapon.range;
-  const h = weapon.arcHeight;
-  const x = isSpin
-    ? player.x + player.w / 2 - w / 2
-    : player.facing === 1
-      ? player.x + player.w - 2
-      : player.x - w + 2;
+  const isSpinDash = player.isSpinDashAttack;
+  const isDoublePoke = player.comboStep === 2 && !isSpinDash;
+  const isTwinCrescent = weapon.id === 'crescent' && player.comboStep === 1 && !isSpinDash;
+
+  const w = isSpinDash
+    ? Math.round(weapon.range * 1.85)
+    : isDoublePoke
+      ? Math.round(weapon.range * 1.48)
+      : isTwinCrescent
+        ? Math.round(weapon.range * 1.65)
+        : weapon.range;
+  const h = isSpinDash
+    ? Math.max(36, weapon.arcHeight + 10)
+    : isDoublePoke
+      ? Math.max(24, Math.round(weapon.arcHeight * 0.85))
+      : weapon.arcHeight + (player.comboStep === 3 ? 6 : 0);
+
+  const x =
+    isTwinCrescent || isSpinDash
+      ? player.facing === 1
+        ? player.x - 4
+        : player.x + player.w - w + 4
+      : player.facing === 1
+        ? player.x + player.w - 2
+        : player.x - w + 2;
   const y = player.y + player.h / 2 - h / 2;
   return { x, y, w, h };
 }
@@ -314,6 +395,7 @@ export function calculateAttackDamage(
   const attackBonus = player.stats.attack * 3;
   const attackMult = 1 + player.stats.attack * 0.04;
   const skillStatMult = isSkill ? 1 + player.stats.skillDmg * 0.08 : 1;
+  const potionMult = player.damageBoostTimer > 0 ? Math.max(1, player.damageBoostMultiplier) : 1;
   return Math.round(
     (weapon.damage + attackBonus) *
       weaponOpMult *
@@ -321,7 +403,8 @@ export function calculateAttackDamage(
       bossScaling *
       attackMult *
       isSkillMultiplier *
-      skillStatMult,
+      skillStatMult *
+      potionMult,
   );
 }
 
@@ -365,6 +448,8 @@ export function equipWeapon(player: PlayerState, weaponId: WeaponId): boolean {
   player.equippedWeapon = weaponId;
   player.attackPhase = 'none';
   player.comboStep = 0;
+  player.comboSubStep = 0;
+  player.isSpinDashAttack = false;
   return true;
 }
 
@@ -379,6 +464,12 @@ export function craftWeapon(
   }
   const def = WEAPONS[weaponId];
   if (!def.craftCost) {
+    if (def.shopPrice && def.shopPrice > 0) {
+      return {
+        ok: false,
+        reason: `Sold at Grand Solaris Armory (${def.shopPrice}G)`,
+      };
+    }
     player.unlockedWeapons.push(weaponId);
     equipWeapon(player, weaponId);
     return { ok: true };
@@ -405,7 +496,20 @@ export function useInventoryItem(
   if (!item || item.count <= 0) {
     return { ok: false, message: 'None left in your pouch.' };
   }
-  if (item.category !== 'potion' || !item.healAmount) {
+  if (item.category !== 'potion') {
+    return { ok: false, message: item.sarcasticQuote };
+  }
+  if (item.attackBoostMult && item.boostDuration) {
+    item.count -= 1;
+    player.damageBoostMultiplier = Math.max(player.damageBoostMultiplier, item.attackBoostMult);
+    player.damageBoostTimer = Math.max(player.damageBoostTimer, item.boostDuration);
+    const pct = Math.round((item.attackBoostMult - 1) * 100);
+    return {
+      ok: true,
+      message: `${item.name}! +${pct}% Attack Damage for ${item.boostDuration}s!`,
+    };
+  }
+  if (!item.healAmount) {
     return { ok: false, message: item.sarcasticQuote };
   }
   if (player.hp >= player.maxHp) {
