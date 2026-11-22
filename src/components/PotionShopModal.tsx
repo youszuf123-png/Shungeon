@@ -93,7 +93,7 @@ export const PotionShopModal: React.FC<PotionShopModalProps> = ({
             </div>
             <div className="space-y-2">
               {hpPotions.map((item) => {
-                const price = item.shopPrice ?? 20;
+                const price = item.shopPrice ?? 80;
                 const canAfford = hud.gold >= price;
                 return (
                   <div
@@ -163,7 +163,7 @@ export const PotionShopModal: React.FC<PotionShopModalProps> = ({
             </div>
             <div className="space-y-2">
               {boostPotions.map((item) => {
-                const price = item.shopPrice ?? 45;
+                const price = item.shopPrice ?? 180;
                 const canAfford = hud.gold >= price;
                 const pct = Math.round(((item.attackBoostMult ?? 1) - 1) * 100);
                 return (

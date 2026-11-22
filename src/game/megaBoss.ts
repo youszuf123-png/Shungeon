@@ -1,3 +1,4 @@
+import { getBossDefeatedMultiplier } from './data';
 import type { ActiveBoss, BiomeId, BossDef, MegaBossArchetype, MegaBossSkillDef } from './types';
 
 export const MEGA_BOSS_SPAWN_CHANCE = 0.10; // 10% chance on every boss defeat
@@ -84,9 +85,12 @@ export function createMegaBossDef(
   archetype: MegaBossArchetype,
   floorIndex: number,
   biome: BiomeId,
+  bossesDefeated = 0,
 ): BossDef {
   const safeFloor = Math.max(1, floorIndex);
-  const scaledHp = Math.max(380, Math.round((190 + safeFloor * 26) * 2.15));
+  const defeatedScale = getBossDefeatedMultiplier(bossesDefeated);
+  const baseMaxHp = Math.max(380, Math.round((190 + safeFloor * 26) * 2.15));
+  const scaledHp = Math.round(baseMaxHp * defeatedScale);
 
   if (archetype === 'mega_dio') {
     return {
@@ -101,6 +105,8 @@ export function createMegaBossDef(
       climateSkyBottom: '#4c052d',
       climateParticleColor: '#fde047',
       maxHp: scaledHp,
+      baseMaxHp,
+      defeatedScale,
       primaryColor: '#eab308',
       secondaryColor: '#f43f5e',
       auraColor: '#22d3ee',
@@ -143,6 +149,8 @@ export function createMegaBossDef(
     climateSkyBottom: '#2d0a3b',
     climateParticleColor: '#38bdf8',
     maxHp: scaledHp,
+    baseMaxHp,
+    defeatedScale,
     primaryColor: '#475569',
     secondaryColor: '#8b5cf6',
     auraColor: '#34d399',
@@ -179,8 +187,9 @@ export function createMegaBossInstance(
   biome: BiomeId,
   x: number,
   floorY: number,
+  bossesDefeated = 0,
 ): ActiveBoss {
-  const def = createMegaBossDef(archetype, floorIndex, biome);
+  const def = createMegaBossDef(archetype, floorIndex, biome, bossesDefeated);
   return {
     def,
     x,

@@ -12,9 +12,8 @@ interface GuildModalProps {
   hud: HudSnapshot;
   initialFloor?: 1 | 2;
   onClose: () => void;
-  onStartMission: (missionId: GuildMissionId, broadcastToParty: boolean) => void;
+  onAcceptMission: (missionId: GuildMissionId) => { ok: boolean; reason?: string } | undefined;
   onInviteAdventurer: (targetPeerId: string, missionId: GuildMissionId) => void;
-  onReturnToCitadel: () => void;
 }
 
 const RANK_PILL_STYLE: Record<GuildRank, string> = {
@@ -31,9 +30,8 @@ export const GuildModal: React.FC<GuildModalProps> = ({
   hud,
   initialFloor,
   onClose,
-  onStartMission,
+  onAcceptMission,
   onInviteAdventurer,
-  onReturnToCitadel,
 }) => {
   const floor2Unlocked = canAccessGuildFloor2(hud.guildRank);
   const startFloor: 1 | 2 =
@@ -42,10 +40,14 @@ export const GuildModal: React.FC<GuildModalProps> = ({
 
   const unlockedMissions = GUILD_MISSIONS.filter((m) => canStartGuildMission(hud.guildRank, m.id));
   const defaultMission = unlockedMissions[unlockedMissions.length - 1]?.id ?? 'f_goblin_warren';
-  const [selectedMission, setSelectedMission] = useState<GuildMissionId>(defaultMission);
+  const [selectedMission, setSelectedMission] = useState<GuildMissionId>(
+    hud.acceptedMissionId ?? defaultMission,
+  );
 
   const floorMissions = GUILD_MISSIONS.filter((m) => m.floorReq === floorTab);
   const badgeId = `rank_badge_${hud.guildRank.toLowerCase()}`;
+  const reqCount = Math.max(1, hud.missionsRequiredPerRank);
+  const doneCount = Math.min(reqCount, hud.rankMissionsCompleted);
 
   return (
     <div
@@ -70,26 +72,22 @@ export const GuildModal: React.FC<GuildModalProps> = ({
                 <span className={`px-2 py-0.5 border font-pixel-mono text-[10px] font-bold ${RANK_PILL_STYLE[hud.guildRank]}`}>
                   {hud.guildRank}-RANK · {RANK_TITLES[hud.guildRank]}
                 </span>
+                <span
+                  data-testid="guild-rank-progress-badge"
+                  className="px-2 py-0.5 bg-[#140b07] border border-emerald-400/60 font-pixel-mono text-[10px] font-bold text-emerald-200"
+                >
+                  {hud.guildRank === 'S'
+                    ? 'MAX SOVEREIGN RANK'
+                    : `Rank Progress: ${doneCount}/${reqCount} Missions`}
+                </span>
               </div>
               <p className="font-pixel-mono text-[11px] text-amber-200/80 mt-0.5">
-                Floor 1: F→C Rank Contracts · Floor 2 (B+ Rank): Princess Escort &amp; Demon King Expedition
+                Complete {reqCount} Guild Missions per rank to promote! After accepting a contract, walk outside to Caravan Rider Vance!
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onReturnToCitadel();
-                onClose();
-              }}
-              className="px-2.5 py-1.5 bg-[#1b1224] hover:bg-[#2c1d3d] border border-purple-400/70 font-pixel-mono text-[10px] text-purple-200 cursor-pointer"
-            >
-              Return to Citadel
-            </button>
             <button
               type="button"
               tabIndex={-1}
@@ -147,6 +145,11 @@ export const GuildModal: React.FC<GuildModalProps> = ({
           <span className="font-pixel-mono text-xs text-yellow-300 font-bold">Gold: {hud.gold}G</span>
         </div>
 
+        {/* Travel Reminder Banner */}
+        <div className="px-5 py-2 bg-[#1c1008] border-b border-amber-500/25 font-pixel-mono text-[10px] text-amber-200">
+          🧭 <strong className="text-emerald-300">No Instant Teleport:</strong> Accept your contract below, walk out the Guild West Door into Solaris Town, and speak <strong className="text-yellow-300">[F]</strong> with <strong className="text-yellow-300">Caravan Rider Vance</strong> to ride to the dungeon!
+        </div>
+
         {/* Body: Left Mission Board + Right Online Adventurers Party List */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-5 overflow-y-auto">
           {/* Mission Board */}
@@ -156,22 +159,25 @@ export const GuildModal: React.FC<GuildModalProps> = ({
                 data-testid="guild-floor2-locked-banner"
                 className="p-3 bg-[#260f16] border border-rose-400/80 font-pixel-mono text-xs text-rose-100"
               >
-                🔒 2nd Floor Restricted: Earn <strong className="text-yellow-300">B-Rank</strong> on the 1st Floor to ascend the Guild Staircase for Royal Princess Escorts &amp; Demon King Expeditions!
+                🔒 2nd Floor Restricted: Earn <strong className="text-yellow-300">B-Rank</strong> on the 1st Floor (5 missions per rank) to ascend the Guild Staircase for Royal Princess Escorts &amp; Demon King Expeditions!
               </div>
             )}
 
             {floorMissions.map((m) => {
               const unlocked = canStartGuildMission(hud.guildRank, m.id);
               const isSelected = selectedMission === m.id;
+              const isAccepted = hud.acceptedMissionId === m.id;
               const isEscort = m.id === 'b_princess_carriage';
               return (
                 <div
                   key={m.id}
                   className={`p-3 border transition-colors ${
                     unlocked
-                      ? isSelected
-                        ? 'bg-[#2a180e] border-amber-300'
-                        : 'bg-[#150c08] border-amber-500/45'
+                      ? isAccepted
+                        ? 'bg-[#12261a] border-emerald-400'
+                        : isSelected
+                          ? 'bg-[#2a180e] border-amber-300'
+                          : 'bg-[#150c08] border-amber-500/45'
                       : 'bg-[#100907] border-slate-700/50 opacity-65'
                   }`}
                 >
@@ -181,9 +187,14 @@ export const GuildModal: React.FC<GuildModalProps> = ({
                         {m.rankReq}-RANK
                       </span>
                       <span className="font-display text-sm font-bold text-amber-50">{m.title}</span>
+                      {isAccepted && (
+                        <span className="px-1.5 py-0.5 bg-emerald-900 border border-emerald-300 font-pixel-mono text-[9px] font-bold text-emerald-100">
+                          CONTRACT ACTIVE
+                        </span>
+                      )}
                     </div>
                     <span className="font-pixel-mono text-[11px] text-amber-300">
-                      +{m.rewardGold}G · {m.promoteToRank === m.rankReq ? `${m.rankReq}-Rank Bounty` : `Promotes to ${m.promoteToRank}-Rank`}
+                      +{m.rewardGold}G · 5 Missions / Rank
                     </span>
                   </div>
 
@@ -193,7 +204,7 @@ export const GuildModal: React.FC<GuildModalProps> = ({
                       data-testid="b-rank-escort-progress"
                       className="mt-1.5 font-pixel-mono text-[10px] text-emerald-300 font-bold"
                     >
-                      Escort Progress: {Math.min(3, hud.bRankEscortsCompleted)}/3 Different Bandit Gangs Defeated
+                      Escort Convoys Cleared: {hud.bRankEscortsCompleted} · Rank Progress: {doneCount}/{reqCount}
                     </div>
                   )}
 
@@ -212,20 +223,20 @@ export const GuildModal: React.FC<GuildModalProps> = ({
                                 : 'bg-[#22140c] border-amber-600/60 text-amber-200 hover:border-amber-300'
                             }`}
                           >
-                            {isSelected ? 'Selected for Party' : 'Select for Party'}
+                            {isSelected ? 'Selected' : 'Select'}
                           </button>
                           <button
                             type="button"
-                            data-testid={`start-mission-${m.id}`}
+                            data-testid={`accept-mission-${m.id}`}
                             tabIndex={-1}
                             onClick={(e) => {
                               e.currentTarget.blur();
-                              onStartMission(m.id, false);
+                              onAcceptMission(m.id);
                               onClose();
                             }}
                             className="px-3 py-1 bg-emerald-800 hover:bg-emerald-700 border border-emerald-300 font-pixel-mono text-[10px] font-bold text-white cursor-pointer"
                           >
-                            DEPART QUEST ▶
+                            {isAccepted ? 'ACCEPTED ✓' : 'ACCEPT CONTRACT ✓'}
                           </button>
                         </>
                       ) : (
@@ -247,14 +258,14 @@ export const GuildModal: React.FC<GuildModalProps> = ({
                 Online Adventurers ({hud.onlineAdventurers.length})
               </h3>
               <p className="font-pixel-mono text-[10px] text-amber-100/75 mt-1">
-                Invite anyone online in Bastera to join your selected Guild Quest party!
+                Invite anyone online in Bastera to share your accepted Guild Contract, then ride out with Caravan Vance!
               </p>
             </div>
 
             {hud.onlineAdventurers.length === 0 ? (
               <div className="p-3 bg-[#1c100a] border border-amber-800/40 font-pixel-mono text-[10px] text-amber-200/75 leading-relaxed">
-                No other players are connected right now. Open another browser tab to test co-op Guild Quest invites, or click{' '}
-                <strong className="text-emerald-300">DEPART QUEST</strong> to run solo!
+                No other players are connected right now. Click{' '}
+                <strong className="text-emerald-300">ACCEPT CONTRACT ✓</strong>, then walk outside the Guild Hall to talk to <strong className="text-yellow-300">Caravan Rider Vance</strong>!
               </div>
             ) : (
               <div className="space-y-2 flex-1 overflow-y-auto">
@@ -297,12 +308,12 @@ export const GuildModal: React.FC<GuildModalProps> = ({
               tabIndex={-1}
               onClick={(e) => {
                 e.currentTarget.blur();
-                onStartMission(selectedMission, true);
+                onAcceptMission(selectedMission);
                 onClose();
               }}
               className="mt-auto w-full py-2 bg-[#7c2d12] hover:bg-[#9a3412] border border-amber-300 font-pixel-mono text-[11px] font-bold text-amber-50 cursor-pointer"
             >
-              LAUNCH PARTY MISSION ▶
+              ACCEPT SELECTED CONTRACT ✓
             </button>
           </div>
         </div>

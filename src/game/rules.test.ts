@@ -11,9 +11,10 @@ import {
   createGyroZeppeliBossDef,
   getBiomeForBossIndex,
   getBossDef,
+  getBossDefeatedMultiplier,
   getBossDifficultyMultiplier,
 } from './data';
-import { CHUNK_WIDTH, generateChunk, getBiomeForChunk } from './worldGen';
+import { CHUNK_WIDTH, FLOOR_Y, generateChunk, getBiomeForChunk } from './worldGen';
 import {
   addInventoryResource,
   allocateStatPoint,
@@ -60,24 +61,33 @@ import {
   toSaveSummary,
 } from './saveSystem';
 import {
+  ARENA_CHALLENGERS,
   GUILD_MISSIONS,
   ISEKAI_IDLE_TRANSPORT_SECONDS,
+  MISSIONS_REQUIRED_PER_RANK,
   PURPLE_FLAME_SKILLS,
+  applyHotSpringRest,
+  buildIsekaiRoomPlatforms,
   buyOrEquipWardrobeItem,
   buyOrEquipWeaponShopItem,
   buyPotionShopItem,
   canAccessGuildFloor2,
   canStartGuildMission,
+  createArenaDuelInit,
   createBanditWave,
   createDemonKingPurpleFlameCast,
   createDemonRealmWave,
+  createDungeonSectorEnemies,
   createGoblinDungeonWave,
   createGuildNpcs,
   createThreeDemonKingsInit,
   createTownNpcs,
+  getIsekaiDayNightState,
+  parseCaravanDestination,
   promoteGuildRankAfterMission,
   resetPlayerForIsekai,
   shouldIdleTriggerIsekai,
+  stepArenaDuelAi,
   stepIsekaiNpcs,
 } from './isekai';
 
@@ -645,40 +655,41 @@ test('Isekai guild rank progression (F -> S), NPC forward/back patrolling, Wardr
   assert.equal(canAccessGuildFloor2('C'), false);
   assert.equal(canAccessGuildFloor2('B'), true);
 
+  assert.equal(MISSIONS_REQUIRED_PER_RANK, 5);
   let rank: 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S' = 'F';
-  const floor1Sequence: typeof GUILD_MISSIONS[number]['id'][] = [
-    'f_goblin_warren',
-    'e_hobgoblin_caves',
-    'd_deep_goblin_keep',
-    'c_demon_vanguard',
-  ];
-  for (const mId of floor1Sequence) {
-    assert.equal(canStartGuildMission(rank, mId), true);
-    const promo = promoteGuildRankAfterMission(rank, mId, inv, 0);
-    assert.equal(promo.promoted, true);
-    rank = promo.nextRank;
-  }
-  assert.equal(rank, 'B');
-  assert.equal(canAccessGuildFloor2(rank), true);
-
-  // B-Rank requires 3 different bandit-gang Princess Escorts to advance to A-Rank
+  let rankMissionsDone = 0;
   let escorts = 0;
-  for (let i = 1; i <= 2; i++) {
-    const p = promoteGuildRankAfterMission(rank, 'b_princess_carriage', inv, escorts);
-    assert.equal(p.promoted, false);
-    assert.equal(p.nextRank, 'B');
-    assert.equal(p.nextBRankEscorts, i);
-    escorts = p.nextBRankEscorts;
-  }
-  const thirdEscort = promoteGuildRankAfterMission(rank, 'b_princess_carriage', inv, escorts);
-  assert.equal(thirdEscort.promoted, true);
-  assert.equal(thirdEscort.nextRank, 'A');
-  rank = thirdEscort.nextRank;
 
-  const finalPromo = promoteGuildRankAfterMission(rank, 'a_three_demon_kings', inv, thirdEscort.nextBRankEscorts);
-  assert.equal(finalPromo.promoted, true);
-  rank = finalPromo.nextRank;
+  const sequence: Array<{ expectedRank: 'F' | 'E' | 'D' | 'C' | 'B' | 'A'; missionId: typeof GUILD_MISSIONS[number]['id']; nextRank: 'E' | 'D' | 'C' | 'B' | 'A' | 'S' }> = [
+    { expectedRank: 'F', missionId: 'f_goblin_warren', nextRank: 'E' },
+    { expectedRank: 'E', missionId: 'e_hobgoblin_caves', nextRank: 'D' },
+    { expectedRank: 'D', missionId: 'd_deep_goblin_keep', nextRank: 'C' },
+    { expectedRank: 'C', missionId: 'c_demon_vanguard', nextRank: 'B' },
+    { expectedRank: 'B', missionId: 'b_princess_carriage', nextRank: 'A' },
+    { expectedRank: 'A', missionId: 'a_three_demon_kings', nextRank: 'S' },
+  ];
+
+  for (const step of sequence) {
+    assert.equal(rank, step.expectedRank);
+    assert.equal(canStartGuildMission(rank, step.missionId), true);
+    for (let i = 1; i <= 4; i++) {
+      const mid = promoteGuildRankAfterMission(rank, step.missionId, inv, escorts, rankMissionsDone);
+      assert.equal(mid.promoted, false);
+      assert.equal(mid.nextRank, rank);
+      assert.equal(mid.nextRankMissionsCompleted, i);
+      rankMissionsDone = mid.nextRankMissionsCompleted;
+      escorts = mid.nextBRankEscorts;
+    }
+    const promo = promoteGuildRankAfterMission(rank, step.missionId, inv, escorts, rankMissionsDone);
+    assert.equal(promo.promoted, true);
+    assert.equal(promo.nextRank, step.nextRank);
+    assert.equal(promo.nextRankMissionsCompleted, 0);
+    rank = promo.nextRank;
+    rankMissionsDone = promo.nextRankMissionsCompleted;
+    escorts = promo.nextBRankEscorts;
+  }
   assert.equal(rank, 'S');
+  assert.equal(canAccessGuildFloor2('B'), true);
   assert.ok(inv.some((it) => it.id === 'rank_badge_s'));
 
   // NPCs walk forward and backward smoothly & tavern drinkers animate drinking
@@ -704,7 +715,7 @@ test('Isekai guild rank progression (F -> S), NPC forward/back patrolling, Wardr
   assert.equal(buyOrEquipWardrobeItem(player, unlocked, 'toggle_crown', true).ok, true);
   assert.equal(player.customization.crownEquipped, true);
 
-  // Mission enemy rosters & 3 Demon Kings purple flame cycle
+  // Mission enemy rosters & 1-by-1 Demon Kings with Allied Squad + purple flame cycle
   const gobs = createGoblinDungeonWave('f_goblin_warren', 0);
   assert.ok(gobs.some((e) => e.archetype === 'goblin_normal'));
   assert.ok(gobs.some((e) => e.archetype === 'hobgoblin'));
@@ -716,9 +727,12 @@ test('Isekai guild rank progression (F -> S), NPC forward/back patrolling, Wardr
   assert.ok(demons.some((e) => e.archetype === 'demon_tank'));
   assert.ok(demons.some((e) => e.archetype === 'demon_lightning'));
 
-  const { demonKings, minions } = createThreeDemonKingsInit(['goblin_normal', 'bandit_archer', 'demon_succubus']);
+  const { demonKings, minions, allies } = createThreeDemonKingsInit(['goblin_normal', 'bandit_archer', 'demon_succubus']);
   assert.equal(demonKings.length, 3);
   assert.equal(minions.length, 3);
+  assert.equal(allies.length, 3);
+  assert.notEqual(demonKings[0].name, demonKings[1].name);
+  assert.notEqual(demonKings[1].name, demonKings[2].name);
   const seenPurpleSkills = new Set<string>();
   for (let i = 0; i < PURPLE_FLAME_SKILLS.length; i++) {
     const cast = createDemonKingPurpleFlameCast(demonKings[0], i, 180);
@@ -732,7 +746,7 @@ test('save system roundtrips Isekai realm, guild rank, crown, wardrobe & badge',
   const player = createInitialPlayer();
   const inv = createInitialInventory();
   resetPlayerForIsekai(player, inv);
-  promoteGuildRankAfterMission('F', 'f_goblin_warren', inv);
+  promoteGuildRankAfterMission('F', 'f_goblin_warren', inv, 0, 4);
 
   const payload = createSavePayload({
     saveId: 'isekai_slot',
@@ -903,6 +917,84 @@ test('deeper dungeons spawn stronger dungeon bosses, Potion Shop boosts ATK, Wea
   const hbSpin = computeWeaponHitbox(player);
   assert.equal(hbSpin.w, Math.round(wRange * 1.85));
 });
+
+test('3x monster HP, 1.8x per-boss-defeated Citadel scaling, endless dungeon distance scaling, Caravan routing, Hot Spring, Day/Night & JJK OP Arena AI', () => {
+  // 1. 1.8x per-boss-defeated Citadel boss multiplier
+  assert.equal(getBossDefeatedMultiplier(0), 1);
+  assert.ok(Math.abs(getBossDefeatedMultiplier(1) - 1.8) < 0.001);
+  assert.ok(Math.abs(getBossDefeatedMultiplier(2) - 3.24) < 0.001);
+  const b0 = getBossDef(5, 0);
+  const b1 = getBossDef(5, 1);
+  assert.equal(b1.maxHp, Math.round(b0.maxHp * 1.8));
+  assert.ok(Math.abs((b1.defeatedScale ?? 1) - 1.8) < 0.001);
+
+  // 2. 3x monster HP & endless sector distance scaling
+  const s0 = createDungeonSectorEnemies('goblin_dungeon', 'f_goblin_warren', 0, 1, 0);
+  const s4 = createDungeonSectorEnemies('goblin_dungeon', 'f_goblin_warren', 4, 2, 0);
+  assert.ok(s0.length >= 3);
+  assert.ok(s4[0].maxHp > s0[0].maxHp * 1.5);
+  assert.ok(s4[0].h >= s0[0].h);
+
+  // 3. Caravan Rider typed destination parser (to dungeon exterior & back to town)
+  assert.equal(parseCaravanDestination('Goblin Dungeon', 'isekai_town', 'F', null).target, 'goblin_dungeon');
+  assert.equal(parseCaravanDestination('Demon Realm', 'isekai_town', 'F', null).ok, false);
+  assert.equal(parseCaravanDestination('Demon Realm', 'isekai_town', 'C', null).target, 'demon_realm');
+  assert.equal(parseCaravanDestination('Solaris Town', 'dungeon_exterior', 'F', null).target, 'isekai_town');
+  assert.equal(parseCaravanDestination('Mars', 'isekai_town', 'F', null).ok, false);
+
+  // 4. Hot Spring rest & Day/Night 5-minute cycle
+  const p = createInitialPlayer();
+  p.stats.hp = 4;
+  p.stats.attack = 3;
+  p.stats.speed = 2;
+  p.maxHp = 115 + 4 * 15;
+  p.hp = 40;
+  const onsen = applyHotSpringRest(p);
+  assert.equal(p.hp, p.maxHp);
+  assert.ok(onsen.healedHp > 0);
+  assert.ok((p.hotSpringTimer ?? 0) >= 60);
+  assert.equal(getIsekaiDayNightState(10).isNight, false);
+  assert.equal(getIsekaiDayNightState(310).isNight, true);
+
+  // 5. Jujutsu Kaisen Colosseum challengers with exact player-matched stats + OP reactive AI
+  assert.equal(ARENA_CHALLENGERS.length, 6);
+  const duel = createArenaDuelInit('satoru_gojo', p);
+  assert.equal(duel.maxHp, p.maxHp);
+  assert.equal(duel.hp, p.maxHp);
+  assert.equal(duel.matchedAtk, Math.round(calculateAttackDamage(p, 1, false)));
+
+  const arenaPlatforms = buildIsekaiRoomPlatforms('dueling_arena');
+  // Incoming projectile triggers OP Flash-Step Dodge with i-frames
+  p.x = 760;
+  p.y = FLOOR_Y - p.h;
+  const dodgeStep = stepArenaDuelAi(
+    duel,
+    p,
+    [
+      {
+        id: 'test_slash',
+        x: duel.x - 36,
+        y: duel.y + 12,
+        vx: 200,
+        vy: 0,
+        radius: 8,
+        damage: 20,
+        fromPlayer: true,
+        color: '#38bdf8',
+        life: 0.5,
+        kind: 'slash_wave',
+      },
+    ],
+    arenaPlatforms,
+    0.016,
+    { minX: 0, maxX: 1240 },
+    FLOOR_Y,
+  );
+  assert.equal(duel.state, 'dodge');
+  assert.ok(duel.invulnTimer > 0);
+  assert.equal(dodgeStep.hypeTrigger, true);
+});
+
 
 
 

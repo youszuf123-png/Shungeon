@@ -48,7 +48,7 @@ export function getBiomeForChunk(chunkIndex: number): BiomeId {
   return getBiomeForBossIndex(Math.min(TOTAL_BOSSES, chunkIndex));
 }
 
-export function generateChunk(chunkIndex: number): GeneratedChunk {
+export function generateChunk(chunkIndex: number, bossesDefeated = 0): GeneratedChunk {
   const rand = seededRand(chunkIndex * 7919 + 42);
   const startX = chunkIndex * CHUNK_WIDTH;
   const endX = startX + CHUNK_WIDTH;
@@ -172,8 +172,8 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
       vy: 0,
       w: 22,
       h: 28,
-      hp: 58,
-      maxHp: 58,
+      hp: 58 * 3,
+      maxHp: 58 * 3,
       facing: 1,
       state: 'patrol',
       stateTimer: 0.9,
@@ -578,7 +578,7 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
               : arch === 'cursed_armor'
                 ? 64
                 : 38;
-    const hp = Math.round(baseHp * scaleFactor);
+    const hp = Math.round(baseHp * scaleFactor * 3);
 
     const names: Partial<Record<EnemyArchetype, string>> = {
       skeleton_guard:
@@ -645,7 +645,10 @@ export function generateChunk(chunkIndex: number): GeneratedChunk {
   // Boss in chunks 1..120+ (Boss #1 right at the end of Chunk 1! Final Boss Gyro Zeppeli in Chunk 101 after Boss #100!)
   let boss: ActiveBoss | null = null;
   if (chunkIndex >= 1) {
-    const def = chunkIndex === 101 ? createGyroZeppeliBossDef(115, 28) : getBossDef(chunkIndex);
+    const def =
+      chunkIndex === 101
+        ? createGyroZeppeliBossDef(115, 28, bossesDefeated)
+        : getBossDef(chunkIndex, bossesDefeated);
     const bossX = startX + 520;
     const bw = def.isGyroBoss ? 36 : 24;
     const bh = def.isGyroBoss ? 52 : 36;

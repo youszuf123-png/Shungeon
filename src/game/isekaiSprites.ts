@@ -8,6 +8,8 @@ import {
 import { DEFAULT_WARRIOR_CUSTOMIZATION } from './rules';
 import { PIXEL_H, PIXEL_W } from './pixelSprites';
 import type {
+  ActiveArenaDuel,
+  ActiveTownRaid,
   AlliedNpc,
   CarriageEscortState,
   CoronationCutsceneHud,
@@ -16,6 +18,7 @@ import type {
   IsekaiNpc,
   PurpleFlameZone,
   RealmMode,
+  TownHouseDamage,
   WarriorCustomization,
 } from './types';
 
@@ -115,39 +118,65 @@ export function drawIsekaiTownBackdrop(
   isCelebration: boolean,
   nightFactor = 0,
   labelCtx?: CanvasRenderingContext2D | null,
+  townHouses?: TownHouseDamage[],
 ) {
   const nf = Math.max(0, Math.min(1, nightFactor));
-  // Smooth sky transition: Sunny Cerulean -> Warm Dusk -> Deep Starlit Indigo Night
+  // Smooth sky transition: Sunny Cerulean -> Warm Dusk -> Manhwa Deep Starlit Cobalt Night
   const grad = ctx.createLinearGradient(0, 0, 0, PIXEL_H);
-  grad.addColorStop(0, lerpHex('#38bdf8', '#090d26', nf));
-  grad.addColorStop(0.55, lerpHex('#bae6fd', '#1e1b4b', nf));
-  grad.addColorStop(1, lerpHex('#fef9c3', '#312e81', nf));
+  grad.addColorStop(0, lerpHex('#38bdf8', '#04081f', nf));
+  grad.addColorStop(0.52, lerpHex('#bae6fd', '#11194a', nf));
+  grad.addColorStop(1, lerpHex('#fef9c3', '#1d2763', nf));
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
 
-  // Twinkling stars & silver moon during dusk/night
+  // Twinkling stars, night storm clouds & luminous silver moonbeam halo at dusk/night
   if (nf > 0.15) {
     ctx.save();
-    for (let s = 0; s < 32; s++) {
+    for (let s = 0; s < 42; s++) {
       const sx = (s * 67 + 19) % PIXEL_W;
-      const sy = (s * 31 + 11) % 108;
-      const tw = 0.4 + 0.6 * Math.abs(Math.sin(time * 2.5 + s));
+      const sy = (s * 29 + 7) % 116;
+      const tw = 0.35 + 0.65 * Math.abs(Math.sin(time * 2.4 + s * 0.8));
       ctx.globalAlpha = nf * tw;
-      pRect(ctx, sx, sy, s % 5 === 0 ? 2 : 1, s % 5 === 0 ? 2 : 1, s % 3 === 0 ? '#e0f2fe' : '#fef08a');
+      pRect(
+        ctx,
+        sx,
+        sy,
+        s % 6 === 0 ? 2 : 1,
+        s % 6 === 0 ? 2 : 1,
+        s % 4 === 0 ? '#93c5fd' : s % 3 === 0 ? '#e0f2fe' : '#fef08a',
+      );
     }
+    // Deep cobalt manhwa night cloud bank drifting behind towers
+    const ncShift = (time * 6) % 240;
+    ctx.globalAlpha = nf * 0.55;
+    for (let c = -1; c <= 3; c++) {
+      const cx = Math.round(c * 240 - ncShift);
+      pRect(ctx, cx + 10, 26, 98, 18, '#0c143d');
+      pRect(ctx, cx + 28, 18, 62, 12, '#16215c');
+      pRect(ctx, cx + 130, 44, 86, 14, '#0c143d');
+      pRect(ctx, cx + 148, 38, 46, 8, '#1e2c73');
+    }
+    // Radiant Silver-Blue Manhwa Full Moon & Outer Halo
     ctx.globalAlpha = Math.min(1, nf * 1.1);
-    ctx.fillStyle = 'rgba(224, 242, 254, 0.24)';
+    const moonGrad = ctx.createRadialGradient(392, 38, 10, 392, 38, 52);
+    moonGrad.addColorStop(0, 'rgba(224, 242, 254, 0.55)');
+    moonGrad.addColorStop(0.45, 'rgba(147, 197, 253, 0.22)');
+    moonGrad.addColorStop(1, 'rgba(30, 58, 138, 0)');
+    ctx.fillStyle = moonGrad;
     ctx.beginPath();
-    ctx.arc(392, 38, 21, 0, Math.PI * 2);
+    ctx.arc(392, 38, 52, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#f8fafc';
     ctx.beginPath();
-    ctx.arc(392, 38, 12, 0, Math.PI * 2);
+    ctx.arc(392, 38, 13, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+    ctx.fillRect(386, 33, 4, 3);
+    ctx.fillRect(395, 41, 3, 4);
     ctx.restore();
   }
 
-  // Sun fading down on horizon at night
+  // Sun fading down on horizon at dusk
   if (nf < 0.85) {
     ctx.save();
     ctx.globalAlpha = 1 - nf;
@@ -240,15 +269,54 @@ export function drawIsekaiTownBackdrop(
     pRect(ctx, tx + 58, 174, 16, 8, '#16a34a');
   }
 
-  // Expanded 3x Town: Varied Fachwerk Medieval Homes spanning x=44..4040!
+  // Expanded 3x Town: Varied Fachwerk Medieval Homes spanning x=44..4040 (with breakable Raid Damage!)
   const winGlowColor = nf > 0.2 ? '#fde047' : '#38bdf8';
   for (let idx = 0; idx < TOWN_RANDOM_HOUSES.length; idx++) {
     const spec = TOWN_RANDOM_HOUSES[idx];
+    const hDmg = townHouses?.[idx];
+    const isBroken = Boolean(hDmg?.broken);
+    const hitFlash = (hDmg?.hitFlash ?? 0) > 0;
     const sx = Math.round(spec.x - bxOff);
     if (sx < -spec.w - 20 || sx > PIXEL_W + 24) continue;
     const topY = 226 - spec.h;
     const midY = topY + Math.round(spec.h * 0.44);
-    pRect(ctx, sx, topY, spec.w, spec.h, spec.wallColor);
+
+    if (isBroken) {
+      // Shattered / Collapsed Town House Ruins after Rimuru / Goblin Slayer AoE!
+      const ruinY = topY + Math.round(spec.h * 0.48);
+      pRect(ctx, sx, ruinY, spec.w, 226 - ruinY, '#292524');
+      pRect(ctx, sx + 4, ruinY + 4, spec.w - 8, 226 - ruinY - 4, '#1c1917');
+      // Jagged snapped timber beams & fallen roof shingles
+      pRect(ctx, sx, topY + 26, 6, 226 - topY - 26, '#451a03');
+      pRect(ctx, sx + spec.w - 6, topY + 34, 6, 226 - topY - 34, '#451a03');
+      pRect(ctx, sx + 10, ruinY - 8, spec.w - 28, 10, spec.roofDark);
+      pRect(ctx, sx + 22, ruinY - 14, 18, 8, spec.roofColor);
+      // Charred rubble mounds & broken door slats
+      pRect(ctx, sx + 8, 214, 22, 12, '#44403c');
+      pRect(ctx, sx + spec.w - 30, 212, 24, 14, '#57534e');
+      pRect(ctx, sx + Math.floor(spec.w / 2) - 9, 204, 16, 20, '#09060b');
+      // Rising smoke & embers from ruined house
+      for (let sm = 0; sm < 3; sm++) {
+        const sp = (time * 0.55 + sm * 0.33 + idx * 0.17) % 1;
+        ctx.fillStyle = `rgba(148, 163, 184, ${(0.45 * (1 - sp)).toFixed(2)})`;
+        ctx.beginPath();
+        ctx.arc(sx + 18 + sm * 20 + Math.sin(time * 3 + sm) * 4, ruinY - 8 - sp * 34, 5 + sp * 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (labelCtx) {
+        drawCrispOverlayLabel(labelCtx, sx + spec.w / 2, ruinY - 18, 'WRECKED', {
+          color: '#fca5a5',
+          bg: 'rgba(69, 10, 10, 0.88)',
+          border: '#ef4444',
+          fontSize: 15,
+          padX: 7,
+          padY: 3,
+        });
+      }
+      continue;
+    }
+
+    pRect(ctx, sx, topY, spec.w, spec.h, hitFlash ? '#fca5a5' : spec.wallColor);
     pRect(ctx, sx, topY, 6, spec.h, spec.beamColor);
     pRect(ctx, sx + spec.w - 6, topY, 6, spec.h, spec.beamColor);
     pRect(ctx, sx, midY, spec.w, 5, spec.beamColor);
@@ -256,7 +324,7 @@ export function drawIsekaiTownBackdrop(
     pRect(ctx, sx + 12, topY + 5, 4, midY - topY - 5, spec.beamColor);
     pRect(ctx, sx + spec.w - 16, topY + 5, 4, midY - topY - 5, spec.beamColor);
     // Pitched Roof + optional chimney smoke
-    pRect(ctx, sx - 6, topY - 18, spec.w + 12, 20, spec.roofColor);
+    pRect(ctx, sx - 6, topY - 18, spec.w + 12, 20, hitFlash ? '#ef4444' : spec.roofColor);
     pRect(ctx, sx - 4, topY - 2, spec.w + 8, 4, spec.roofDark);
     pRect(ctx, sx + 4, topY - 30, spec.w - 8, 14, spec.roofColor);
     pRect(ctx, sx + 16, topY - 40, Math.max(24, spec.w - 32), 12, spec.roofDark);
@@ -282,6 +350,15 @@ export function drawIsekaiTownBackdrop(
     pRect(ctx, sx + 10, topY + 29, 20, 4, '#78350f');
     pRect(ctx, sx + 12, topY + 26, 4, 3, '#f43f5e');
     pRect(ctx, sx + 20, topY + 26, 4, 3, '#fde047');
+
+    // Structural Cracks & HP Meter when damaged during a Town Raid!
+    if (hDmg && hDmg.hp < hDmg.maxHp) {
+      pRect(ctx, sx + 14, midY - 6, 3, 18, '#09060b');
+      pRect(ctx, sx + 17, midY + 8, 8, 2, '#09060b');
+      pRect(ctx, sx + spec.w - 22, midY + 14, 3, 16, '#09060b');
+      pRect(ctx, sx + 10, topY - 48, spec.w - 20, 5, '#09060b');
+      pRect(ctx, sx + 11, topY - 47, Math.round(((spec.w - 22) * hDmg.hp) / Math.max(1, hDmg.maxHp)), 3, '#f97316');
+    }
   }
 
   // Sunlit Market Stall beside Merchant Lena (x=130..185)
@@ -554,8 +631,85 @@ export function drawIsekaiTownBackdrop(
     }
   }
 
-  // Iron Streetlamps lined down the 3x avenue (x=110..3960)
-  for (let lxWorld = 115; lxWorld <= 4000; lxWorld += 230) {
+  // West Edge: Citadel Return Gate Pillar (x=16..58)
+  const cgx = Math.round(16 - bxOff);
+  if (cgx > -80 && cgx < PIXEL_W + 20) {
+    pRect(ctx, cgx, 148, 42, 76, '#1e293b');
+    pRect(ctx, cgx + 4, 152, 34, 72, '#0f172a');
+    pRect(ctx, cgx + 8, 156, 26, 66, '#0ea5e9');
+    pRect(ctx, cgx + 12, 162, 18, 56, '#7dd3fc');
+    if (labelCtx) {
+      drawCrispOverlayLabel(labelCtx, cgx + 21, 138, 'CITADEL GATE', {
+        color: '#bae6fd',
+        bg: 'rgba(15, 23, 42, 0.94)',
+        border: '#38bdf8',
+        fontSize: 18,
+        padX: 10,
+        padY: 4,
+      });
+    }
+  }
+
+  // Hero Building 6: MASSIVE ROMAN-STYLE SOLARIS GRAND COLOSSEUM (x=3145..3545, arch door x=3296)
+  const arx = Math.round(3145 - bxOff);
+  if (arx > -420 && arx < PIXEL_W + 40) {
+    // Stepped Travertine Colosseum Base & Curved Outer Ring
+    pRect(ctx, arx - 10, 44, 418, 180, '#78716c');
+    pRect(ctx, arx, 32, 398, 192, '#a8a29e');
+    pRect(ctx, arx + 12, 20, 374, 24, '#d6d3d1');
+    // Crumbling classic Colosseum upper attics & Roman columns
+    pRect(ctx, arx + 12, 16, 374, 5, '#fbbf24');
+    for (let t = 0; t < 3; t++) {
+      const rowY = 42 + t * 38;
+      pRect(ctx, arx + 6, rowY, 386, 4, '#57534e');
+      for (let col = 0; col < 9; col++) {
+        const cx = arx + 18 + col * 42;
+        if (t === 2 && (col === 3 || col === 4 || col === 5)) continue; // Central grand entry occupies lower middle!
+        // Fluted travertine Roman arch & pillar
+        pRect(ctx, cx, rowY + 4, 28, 30, '#1c1917');
+        pRect(ctx, cx + 3, rowY + 7, 22, 27, '#09060b');
+        pRect(ctx, cx - 4, rowY + 4, 5, 34, '#e7e5e4');
+        pRect(ctx, cx + 27, rowY + 4, 5, 34, '#e7e5e4');
+      }
+    }
+    // Imperial Pennant Flags & Laurel Crest
+    const waveFlag = Math.round(Math.sin(time * 6) * 2);
+    for (const fxOff of [26, 130, 264, 368]) {
+      pRect(ctx, arx + fxOff, 2, 4, 22, '#e2e8f0');
+      pRect(ctx, arx + fxOff + 4, 4 + waveFlag, 20, 12, '#dc2626');
+      pRect(ctx, arx + fxOff + 9, 7 + waveFlag, 8, 6, '#fbbf24');
+    }
+    // Giant Arched Colosseum Entryway (aligned with door x=3296..3392)
+    pRect(ctx, arx + 142, 124, 114, 100, '#b91c1c');
+    pRect(ctx, arx + 150, 132, 98, 92, '#78350f');
+    pRect(ctx, arx + 156, 140, 86, 84, '#09060b');
+    pRect(ctx, arx + 152, 126, 94, 8, '#fbbf24');
+    // Twin Blazing Roman Brazier Pillars flanking entrance
+    for (const bx of [arx + 130, arx + 260]) {
+      pRect(ctx, bx, 152, 10, 72, '#44403c');
+      pRect(ctx, bx - 2, 144, 14, 8, '#78350f');
+      pRect(ctx, bx, 134 + Math.round(Math.sin(time * 12 + bx) * 2), 10, 12, '#f97316');
+      pRect(ctx, bx + 2, 137 + Math.round(Math.sin(time * 12 + bx) * 2), 6, 8, '#fde047');
+    }
+    if (labelCtx) {
+      drawCrispOverlayLabel(labelCtx, arx + 199, 114, 'GRAND COLOSSEUM · DUELING ARENA [F]', {
+        color: '#fef08a',
+        bg: 'rgba(127, 29, 29, 0.96)',
+        border: '#fbbf24',
+        fontSize: 22,
+        padX: 14,
+        padY: 5,
+      });
+    } else {
+      ctx.fillStyle = '#fde047';
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('GRAND COLOSSEUM [F]', arx + 199, 118);
+    }
+  }
+
+  // Iron Streetlamps lined down the 3x avenue (x=115..3540)
+  for (let lxWorld = 115; lxWorld <= 3540; lxWorld += 230) {
     const lx = Math.round(lxWorld - bxOff);
     if (lx < -20 || lx > PIXEL_W + 20) continue;
     pRect(ctx, lx, 174, 3, 50, '#334155');
@@ -666,9 +820,9 @@ export function drawCaravanRider(
 }
 
 /**
- * Cozy Night Shading Layer:
- * Indigo twilight veil pierced by warm golden radial pools from streetlamps, Town windows,
- * Hot Spring lanterns, Caravan lantern, and the Knight's own warm belt lantern!
+ * Fantasy Manhwa Reworked Nighttime Layer:
+ * Crisp royal cobalt moonlight + diagonal silver moonbeams, warm cobblestone streetlamp cones,
+ * glowing stained/leaded shop & cottage windows, shimmering moonlit fountain highlights, & floating fireflies!
  */
 export function drawIsekaiNightLighting(
   ctx: CanvasRenderingContext2D,
@@ -683,18 +837,37 @@ export function drawIsekaiNightLighting(
   if (realm !== 'isekai_town' && realm !== 'dungeon_exterior' && realm !== 'carriage_escort') return;
 
   const nf = Math.min(1, nightFactor);
-  // 1. Cozy Indigo Midnight Ambient Overlay
   ctx.save();
-  ctx.fillStyle = `rgba(10, 14, 42, ${(nf * 0.56).toFixed(3)})`;
+
+  // 1. Directional Cobalt-Indigo Twilight Wash (keeps rooftops and stonework sharp, never muddy)
+  const nightShade = ctx.createLinearGradient(0, 0, 0, PIXEL_H);
+  nightShade.addColorStop(0, `rgba(6, 12, 42, ${(nf * 0.46).toFixed(3)})`);
+  nightShade.addColorStop(0.55, `rgba(11, 18, 56, ${(nf * 0.38).toFixed(3)})`);
+  nightShade.addColorStop(1, `rgba(5, 8, 28, ${(nf * 0.50).toFixed(3)})`);
+  ctx.fillStyle = nightShade;
   ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
 
-  // 2. Additive Warm Lantern Glows
+  // 2. Diagonal Manhwa Silver-Blue Moonbeam Shafts
+  if (nf > 0.25) {
+    ctx.fillStyle = `rgba(147, 197, 253, ${(nf * 0.065).toFixed(3)})`;
+    for (const beamX of [140, 320, 440]) {
+      ctx.beginPath();
+      ctx.moveTo(beamX + 20, 0);
+      ctx.lineTo(beamX + 74, 0);
+      ctx.lineTo(beamX - 18, 226);
+      ctx.lineTo(beamX - 72, 226);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // 3. Additive Warm Lantern Cones, Cobblestone Light Pools & Window Bloom
   ctx.globalCompositeOperation = 'lighter';
   const drawWarmLight = (sx: number, sy: number, r: number, rgb: string, alpha: number) => {
     if (sx < -r || sx > PIXEL_W + r) return;
     const g = ctx.createRadialGradient(sx, sy, 2, sx, sy, r);
     g.addColorStop(0, `rgba(${rgb}, ${(alpha * nf).toFixed(3)})`);
-    g.addColorStop(0.55, `rgba(${rgb}, ${(alpha * 0.42 * nf).toFixed(3)})`);
+    g.addColorStop(0.5, `rgba(${rgb}, ${(alpha * 0.44 * nf).toFixed(3)})`);
     g.addColorStop(1, `rgba(${rgb}, 0)`);
     ctx.fillStyle = g;
     ctx.fillRect(Math.round(sx - r), Math.round(sy - r), Math.round(r * 2), Math.round(r * 2));
@@ -703,26 +876,54 @@ export function drawIsekaiNightLighting(
   if (realm === 'isekai_town') {
     const bxOff = Math.floor(camX);
     for (let lxWorld = 115; lxWorld <= 4000; lxWorld += 230) {
-      drawWarmLight(lxWorld - bxOff, 166, 56, '253, 224, 71', 0.44);
+      const lx = lxWorld - bxOff;
+      if (lx < -80 || lx > PIXEL_W + 80) continue;
+      // Lantern head halo + downward golden beam cone onto the cobblestones
+      drawWarmLight(lx + 1, 165, 58, '253, 224, 71', 0.46);
+      ctx.fillStyle = `rgba(253, 224, 71, ${(nf * 0.14).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(lx - 2, 169);
+      ctx.lineTo(lx + 5, 169);
+      ctx.lineTo(lx + 24, 228);
+      ctx.lineTo(lx - 21, 228);
+      ctx.closePath();
+      ctx.fill();
+      drawWarmLight(lx + 1, 226, 26, '251, 191, 36', 0.30);
     }
+
     for (const h of TOWN_RANDOM_HOUSES) {
-      drawWarmLight(h.x + h.w / 2 - bxOff, 226 - h.h + 20, 42, '251, 191, 36', 0.3);
+      drawWarmLight(h.x + h.w / 2 - bxOff, 226 - h.h + 22, 46, '251, 191, 36', 0.34);
     }
-    // Shopfront glows & Hot Spring turquoise/amber glow
-    drawWarmLight(375 - bxOff, 180, 72, '251, 191, 36', 0.42);
-    drawWarmLight(645 - bxOff, 185, 62, '45, 212, 191', 0.36);
-    drawWarmLight(908 - bxOff, 185, 62, '244, 114, 182', 0.32);
-    drawWarmLight(1212 - bxOff, 180, 78, '251, 146, 60', 0.38);
-    drawWarmLight(530 - bxOff, 192, 64, '253, 224, 71', 0.48); // Caravan lantern
-    drawWarmLight(2705 - bxOff, 195, 92, '45, 212, 191', 0.42); // Hot Spring glow
-    drawWarmLight(2568 - bxOff, 158, 52, '251, 146, 60', 0.45);
+
+    // Moonlit shimmer over the Solaris White Marble Fountain!
+    drawWarmLight(253 - bxOff, 186, 56, '125, 211, 252', 0.30);
+    // Shopfront glows, Caravan lantern cones, Hot Spring steam glow & Colosseum twin fire braziers
+    drawWarmLight(375 - bxOff, 178, 76, '251, 191, 36', 0.45);
+    drawWarmLight(530 - bxOff, 190, 72, '253, 224, 71', 0.50);
+    drawWarmLight(645 - bxOff, 184, 66, '45, 212, 191', 0.42);
+    drawWarmLight(908 - bxOff, 184, 66, '244, 114, 182', 0.36);
+    drawWarmLight(1212 - bxOff, 178, 84, '251, 146, 60', 0.42);
+    drawWarmLight(2705 - bxOff, 194, 96, '45, 212, 191', 0.46);
+    drawWarmLight(2568 - bxOff, 158, 56, '251, 146, 60', 0.48);
+    drawWarmLight(3275 - bxOff, 138, 62, '249, 115, 22', 0.48);
+    drawWarmLight(3405 - bxOff, 138, 62, '249, 115, 22', 0.48);
+
+    // Floating Golden-Emerald Nocturnal Fireflies drifting softly across rooftops & gardens
+    for (let f = 0; f < 18; f++) {
+      const fx = ((f * 79 + Math.sin(time * 0.9 + f) * 26 - bxOff * 0.45) % PIXEL_W + PIXEL_W) % PIXEL_W;
+      const fy = 128 + ((f * 23) % 88) + Math.sin(time * 2.2 + f * 1.3) * 6;
+      const glow = 0.35 + 0.55 * Math.abs(Math.sin(time * 3.1 + f));
+      ctx.fillStyle = `rgba(254, 240, 138, ${(nf * glow).toFixed(2)})`;
+      ctx.fillRect(Math.round(fx), Math.round(fy), 2, 2);
+    }
   } else if (realm === 'dungeon_exterior') {
-    drawWarmLight(175 - camX, 206, 86, '251, 146, 60', 0.56); // Campfire & Caravan lantern
+    drawWarmLight(196 - camX, 208, 92, '251, 146, 60', 0.58);
+    drawWarmLight(126 - camX, 192, 64, '253, 224, 71', 0.42);
   }
 
-  // Personal warm aura around the Warrior
+  // Personal warm belt-lantern aura around the Warrior
   const pulse = Math.sin(time * 5) * 4;
-  drawWarmLight(playerScreenX, playerScreenY, 64 + pulse, '254, 240, 138', 0.36);
+  drawWarmLight(playerScreenX, playerScreenY, 68 + pulse, '254, 240, 138', 0.38);
   ctx.restore();
 }
 
@@ -908,6 +1109,15 @@ export function drawIsekaiFloors(
     ctx.fillStyle = realm === 'demon_king_arena' ? `rgba(192,132,252,${pulse})` : `rgba(251,146,60,${pulse})`;
     for (let lx = -((bxOff % 44 + 44) % 44); lx < PIXEL_W; lx += 44) {
       ctx.fillRect(lx, 234, 22, 3);
+    }
+  } else if (realm === 'dueling_arena') {
+    // Classic golden Colosseum combat sand & stone border trim
+    pRect(ctx, 0, 224, PIXEL_W, 46, '#d6b37c');
+    pRect(ctx, 0, 224, PIXEL_W, 4, '#fbbf24');
+    pRect(ctx, 0, 228, PIXEL_W, 3, '#a88450');
+    for (let ax = -((bxOff % 40 + 40) % 40); ax < PIXEL_W; ax += 40) {
+      pRect(ctx, ax, 234, 34, 10, '#c29b61');
+      pRect(ctx, ax + 14, 248, 34, 10, '#9a7542');
     }
   }
 }
@@ -1299,32 +1509,86 @@ export function drawGoblinDungeonBackdrop(ctx: CanvasRenderingContext2D, camX: n
 }
 
 /**
- * Sunny Kingdom Highway Escort Backdrop + Moving Royal Carriage carrying the Princess!
+ * Lush Deep Emerald & Viridian Royal Forest Highway Backdrop + Moving Royal Carriage!
  */
 export function drawCarriageEscortBackdrop(ctx: CanvasRenderingContext2D, camX: number, time: number) {
   const grad = ctx.createLinearGradient(0, 0, 0, PIXEL_H);
-  grad.addColorStop(0, '#0ea5e9');
-  grad.addColorStop(0.6, '#bae6fd');
-  grad.addColorStop(1, '#dcfce7');
+  grad.addColorStop(0, '#0284c7');
+  grad.addColorStop(0.32, '#7dd3fc');
+  grad.addColorStop(0.62, '#a7f3d0');
+  grad.addColorStop(1, '#14532d');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
 
-  drawAnimeCloud(ctx, 80 - ((time * 14) % 520), 26, 66);
-  drawAnimeCloud(ctx, 290 - ((time * 10) % 520), 42, 54);
+  drawAnimeCloud(ctx, 80 - ((time * 14) % 520), 22, 66);
+  drawAnimeCloud(ctx, 290 - ((time * 10) % 520), 36, 54);
 
-  const pxOff = Math.floor(camX * 0.35) % 240;
-  for (let x = -pxOff; x < PIXEL_W + 240; x += 240) {
-    pRect(ctx, x, 130, 240, 96, '#22c55e');
-    // Woodland pine & oak clusters flanking the royal road
-    for (let t = 0; t < 3; t++) {
-      const tx = x + 28 + t * 76;
-      pRect(ctx, tx + 10, 152, 8, 72, '#78350f');
-      pRect(ctx, tx, 114, 28, 42, '#15803d');
-      pRect(ctx, tx + 4, 102, 20, 16, '#16a34a');
-    }
+  // Far Parallax Ancient Evergreen Forest Ridges & Towering Canopy
+  const farOff = ((Math.floor(camX * 0.16) % 160) + 160) % 160;
+  for (let fx = -farOff - 160; fx < PIXEL_W + 160; fx += 160) {
+    pRect(ctx, fx, 94, 160, 132, '#064e3b');
+    pRect(ctx, fx + 12, 68, 56, 42, '#065f46');
+    pRect(ctx, fx + 84, 74, 62, 38, '#047857');
+    pRect(ctx, fx + 44, 52, 42, 30, '#059669');
   }
-  // Golden kingdom dirt & flagstone road
-  pRect(ctx, 0, 224, PIXEL_W, 46, '#a16207');
+
+  // Diagonal Warm Sunbeams Filtering Down Through the Forest Canopy
+  ctx.save();
+  ctx.fillStyle = 'rgba(254, 249, 195, 0.11)';
+  for (const bx of [80, 210, 355]) {
+    ctx.beginPath();
+    ctx.moveTo(bx, 0);
+    ctx.lineTo(bx + 42, 0);
+    ctx.lineTo(bx - 18, 224);
+    ctx.lineTo(bx - 60, 224);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Midground Dense Leafy Oak & Birch Woodland + Hanging Vines + Thick Moss Trunks
+  const midOff = ((Math.floor(camX * 0.42) % 210) + 210) % 210;
+  for (let mx = -midOff - 210; mx < PIXEL_W + 210; mx += 210) {
+    pRect(ctx, mx, 146, 210, 80, '#14532d');
+    for (let t = 0; t < 3; t++) {
+      const tx = mx + 14 + t * 68;
+      // Gnarled mossy trunk + roots
+      pRect(ctx, tx + 16, 108, 14, 118, '#451a03');
+      pRect(ctx, tx + 19, 112, 4, 112, '#78350f');
+      pRect(ctx, tx + 15, 134, 4, 42, '#16a34a'); // Moss stripe
+      // Layered lush verdant foliage crown
+      pRect(ctx, tx - 8, 74, 64, 44, '#052e16');
+      pRect(ctx, tx - 4, 64, 56, 38, '#15803d');
+      pRect(ctx, tx + 4, 54, 42, 26, '#16a34a');
+      pRect(ctx, tx + 12, 46, 26, 14, '#22c55e');
+      pRect(ctx, tx + 16, 50, 14, 6, '#4ade80');
+      // Swaying hanging canopy vines
+      const vSway = Math.round(Math.sin(time * 2.4 + t + mx * 0.02) * 2);
+      pRect(ctx, tx + 4 + vSway, 96, 2, 30, '#22c55e');
+      pRect(ctx, tx + 40 - vSway, 100, 2, 24, '#4ade80');
+    }
+    // Lush flowering fern bushes at roadside edge
+    pRect(ctx, mx + 26, 198, 44, 28, '#166534');
+    pRect(ctx, mx + 32, 192, 32, 14, '#22c55e');
+    pRect(ctx, mx + 122, 200, 48, 26, '#15803d');
+    pRect(ctx, mx + 128, 194, 34, 12, '#4ade80');
+    // Wildflowers
+    pRect(ctx, mx + 38, 206, 3, 3, '#fde047');
+    pRect(ctx, mx + 52, 210, 3, 3, '#fb7185');
+    pRect(ctx, mx + 140, 208, 3, 3, '#fef08a');
+    pRect(ctx, mx + 156, 204, 3, 3, '#7dd3fc');
+  }
+
+  // Drifting Floating Leaf Motes & Sunlight Spores
+  for (let l = 0; l < 12; l++) {
+    const lx = ((l * 47 + time * 18) % PIXEL_W);
+    const ly = 54 + ((l * 19 + Math.sin(time * 2 + l) * 14) % 156);
+    pRect(ctx, lx, ly, 3, 2, l % 2 === 0 ? '#86efac' : '#fef08a');
+  }
+
+  // Emerald Grassy Verge + Warm Royal Highway Dirt & Cobblestones
+  pRect(ctx, 0, 216, PIXEL_W, 8, '#22c55e');
+  pRect(ctx, 0, 224, PIXEL_W, 46, '#92400e');
   pRect(ctx, 0, 224, PIXEL_W, 4, '#eab308');
 }
 
@@ -1801,18 +2065,162 @@ export function drawPurpleFlameZones(
 ) {
   for (const z of zones) {
     const sx = Math.round(z.x - camX);
-    if (sx < -60 || sx > PIXEL_W + 60) continue;
+    if (sx < -90 || sx > PIXEL_W + 90) continue;
     const flick = Math.round(Math.sin(time * 22 + z.x) * 4);
     const cx = sx + z.w / 2;
     const baseY = z.y + z.h;
     ctx.save();
-    ctx.fillStyle = 'rgba(147, 51, 234, 0.35)';
-    ctx.beginPath();
-    ctx.arc(cx, Math.round(baseY - 14), z.w * 0.65 + 4, 0, Math.PI * 2);
-    ctx.fill();
-    pRect(ctx, sx, z.y + flick, z.w, z.h, '#7e22ce');
-    pRect(ctx, sx + 4, z.y + 8 + flick, Math.max(4, z.w - 8), Math.max(8, z.h - 8), '#c084fc');
-    pRect(ctx, cx - 3, z.y + 18 + flick, 6, Math.max(6, z.h - 18), '#fdf4ff');
+    if (z.kind === 'rimuru_megiddo') {
+      // Rimuru Megiddo: Sky Solar Prism + Piercing Cyan-Gold Light Lasers!
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+      ctx.fillRect(sx, z.y, z.w, z.h);
+      pRect(ctx, cx - 10, z.y - 8, 20, 8, '#bae6fd');
+      for (let r = 0; r < 5; r++) {
+        const rx = sx + 10 + r * ((z.w - 20) / 4);
+        pRect(ctx, rx - 3, z.y, 6, z.h, r % 2 === 0 ? '#38bdf8' : '#fef08a');
+        pRect(ctx, rx - 1, z.y, 2, z.h, '#ffffff');
+      }
+    } else if (z.kind === 'rimuru_black_lightning') {
+      // Rimuru Black Lightning: Dark Indigo Core + Crackling Violet-Gold Bolts!
+      ctx.fillStyle = 'rgba(30, 27, 75, 0.55)';
+      ctx.fillRect(sx, z.y, z.w, z.h);
+      for (let b = 0; b < 4; b++) {
+        const bx = sx + 12 + b * 22 + ((Math.round(time * 30 + b * 5) % 6) - 3);
+        pRect(ctx, bx, z.y, 4, z.h, '#a855f7');
+        pRect(ctx, bx + 1, z.y + flick, 2, z.h, '#fde047');
+      }
+    } else if (z.kind === 'rimuru_beelzebuth') {
+      // Rimuru Beelzebuth: Expanding Gluttony Abyss Vortex!
+      ctx.fillStyle = 'rgba(88, 28, 135, 0.55)';
+      ctx.beginPath();
+      ctx.arc(cx, Math.round(baseY - z.h * 0.42), z.w * 0.48, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#e879f9';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, Math.round(baseY - z.h * 0.42), z.w * 0.36, time * 5, time * 5 + Math.PI * 1.5);
+      ctx.stroke();
+      pRect(ctx, cx - 12, Math.round(baseY - z.h * 0.48), 24, 24, '#09020f');
+    } else if (z.kind === 'gs_gate_scroll') {
+      // Goblin Slayer Gate Scroll: Pressurized Deep-Sea Water Cannon Torrent!
+      ctx.fillStyle = 'rgba(14, 165, 233, 0.38)';
+      ctx.fillRect(sx, z.y, z.w, z.h);
+      for (let j = 0; j < 6; j++) {
+        const jx = sx + 8 + j * ((z.w - 16) / 5);
+        pRect(ctx, jx - 4, z.y + flick, 8, z.h, '#0284c7');
+        pRect(ctx, jx - 2, z.y, 4, z.h, '#e0f2fe');
+      }
+    } else if (z.kind === 'gs_shield_shock') {
+      // Goblin Slayer Silver Buckler Shockwave!
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.28)';
+      ctx.fillRect(sx, baseY - 26, z.w, 26);
+      pRect(ctx, sx, baseY - 10 + Math.round(flick * 0.5), z.w, 10, '#f59e0b');
+      pRect(ctx, sx + 8, baseY - 18, z.w - 16, 6, '#e2e8f0');
+    } else if (z.kind === 'gs_oil_bomb' || z.kind === 'bandit_firebomb') {
+      // Incendiary Firebomb AoE Blast!
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.36)';
+      ctx.beginPath();
+      ctx.arc(cx, Math.round(baseY - 18), z.w * 0.46, 0, Math.PI * 2);
+      ctx.fill();
+      pRect(ctx, sx + 4, z.y + flick, z.w - 8, z.h, '#dc2626');
+      pRect(ctx, sx + 12, z.y + 14 + flick, Math.max(8, z.w - 24), Math.max(12, z.h - 14), '#f97316');
+      pRect(ctx, cx - 6, z.y + 24 + flick, 12, Math.max(8, z.h - 24), '#fef08a');
+    } else if (z.kind.startsWith('jjk_')) {
+      // Large, vibrant, fluid Jujutsu Kaisen Cursed Technique & Domain Expansion AoEs!
+      const prog = Math.max(0, Math.min(1, z.life / Math.max(0.1, z.maxLife)));
+      const midY = baseY - z.h * 0.48;
+      const paletteByKind: Record<string, [string, string, string]> = {
+        jjk_domain_void: ['#38bdf8', '#818cf8', '#f8fafc'],
+        jjk_hollow_purple: ['#a855f7', '#e879f9', '#38bdf8'],
+        jjk_red_blue: ['#ef4444', '#38bdf8', '#fde047'],
+        jjk_domain_shrine: ['#dc2626', '#fb7185', '#fbbf24'],
+        jjk_cleave_storm: ['#f43f5e', '#fb923c', '#ffffff'],
+        jjk_domain_chains: ['#a855f7', '#cbd5e1', '#e11d48'],
+        jjk_domain_swords: ['#e879f9', '#38bdf8', '#fdf4ff'],
+        jjk_rika_beam: ['#c084fc', '#e879f9', '#ffffff'],
+        jjk_domain_shadow: ['#6366f1', '#38bdf8', '#09090b'],
+        jjk_domain_ratio: ['#facc15', '#10b981', '#fef9c3'],
+        jjk_domain_station: ['#ef4444', '#fb7185', '#fde047'],
+        jjk_black_flash: ['#ef4444', '#09090b', '#fb7185'],
+        jjk_domain_womb: ['#7e22ce', '#d946ef', '#fde047'],
+        jjk_uzumaki_vortex: ['#9333ea', '#e879f9', '#38bdf8'],
+        jjk_domain_arsenal: ['#10b981', '#f43f5e', '#e2e8f0'],
+        jjk_split_soul_slash: ['#34d399', '#f43f5e', '#ffffff'],
+        jjk_domain_gamble: ['#22c55e', '#fde047', '#ec4899'],
+        jjk_jackpot_fever: ['#4ade80', '#fde047', '#38bdf8'],
+        jjk_domain_amber: ['#06b6d4', '#818cf8', '#e0f2fe'],
+        jjk_kashimo_thunder: ['#22d3ee', '#38bdf8', '#ffffff'],
+        jjk_domain_perfection: ['#2dd4bf', '#a855f7', '#f0fdfa'],
+        jjk_idle_transfig: ['#2dd4bf', '#f43f5e', '#a855f7'],
+        jjk_domain_coffin: ['#f97316', '#dc2626', '#fef08a'],
+        jjk_jogo_volcano: ['#fb923c', '#dc2626', '#fde047'],
+        jjk_domain_blood: ['#be123c', '#fb7185', '#ffe4e6'],
+        jjk_piercing_blood: ['#e11d48', '#fb7185', '#ffffff'],
+        jjk_domain_court: ['#fbbf24', '#38bdf8', '#fef3c7'],
+        jjk_deadly_gavel: ['#fde047', '#f59e0b', '#ffffff'],
+        jjk_domain_straw: ['#f43f5e', '#38bdf8', '#fbcfe8'],
+        jjk_straw_resonance: ['#fb7185', '#38bdf8', '#e879f9'],
+      };
+      const [c1, c2, c3] = paletteByKind[z.kind] ?? ['#a855f7', '#38bdf8', '#ffffff'];
+
+      // Smooth outer luminous shockwave aura
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(cx, midY, 4, cx, midY, z.w * 0.65);
+      glow.addColorStop(0, `${c3}cc`);
+      glow.addColorStop(0.45, `${c1}88`);
+      glow.addColorStop(0.8, `${c2}44`);
+      glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, midY, z.w * 0.65, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Smooth fluid vertical energy pillar
+      const beam = ctx.createLinearGradient(sx, z.y, sx + z.w, z.y);
+      beam.addColorStop(0, 'rgba(0,0,0,0)');
+      beam.addColorStop(0.25, `${c1}aa`);
+      beam.addColorStop(0.5, `${c3}ee`);
+      beam.addColorStop(0.75, `${c2}aa`);
+      beam.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = beam;
+      ctx.fillRect(sx, z.y, z.w, z.h);
+
+      // Rotating fluid energy arcs & crisp ground shockwave rings
+      ctx.strokeStyle = c3;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.ellipse(cx, baseY - 6, z.w * 0.48 * (0.7 + 0.3 * Math.sin(time * 12)), 8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = c2;
+      ctx.lineWidth = 2;
+      for (let r = 0; r < 3; r++) {
+        const ang = time * (5 + r * 2) + r * 2.1;
+        ctx.beginPath();
+        ctx.arc(cx, midY, z.w * (0.22 + r * 0.1), ang, ang + Math.PI * 1.15);
+        ctx.stroke();
+      }
+
+      // Cross-slash / lightning / geometric lattice flair inside zone
+      ctx.strokeStyle = c1;
+      ctx.lineWidth = 2.5;
+      for (let s = 0; s < 4; s++) {
+        const syOff = z.y + ((s + 0.5) / 4) * z.h + Math.sin(time * 16 + s) * 6;
+        ctx.beginPath();
+        ctx.moveTo(sx + 8, syOff - 10);
+        ctx.lineTo(sx + z.w - 8, syOff + 10);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = Math.max(0.2, prog);
+    } else {
+      ctx.fillStyle = 'rgba(147, 51, 234, 0.35)';
+      ctx.beginPath();
+      ctx.arc(cx, Math.round(baseY - 14), z.w * 0.65 + 4, 0, Math.PI * 2);
+      ctx.fill();
+      pRect(ctx, sx, z.y + flick, z.w, z.h, '#7e22ce');
+      pRect(ctx, sx + 4, z.y + 8 + flick, Math.max(4, z.w - 8), Math.max(8, z.h - 8), '#c084fc');
+      pRect(ctx, cx - 3, z.y + 18 + flick, 6, Math.max(6, z.h - 18), '#fdf4ff');
+    }
     ctx.restore();
   }
 }
@@ -1893,3 +2301,937 @@ export function drawCoronationCutscene(
   ctx.fillText(cutscene.subtitle, PIXEL_W / 2, 242);
   ctx.restore();
 }
+
+/**
+ * Monumental Roman-Colosseum Interior (1240px wide):
+ * Curved multi-tier travertine Colosseum bowl, towering upper stone arcades, Imperial Emperor's Box,
+ * sunlit open stadium dome, flaming pillar braziers, and massive tiered crowd cheering above!
+ */
+export function drawDuelingArenaBackdrop(
+  ctx: CanvasRenderingContext2D,
+  camX: number,
+  time: number,
+  hypeTimer = 0,
+  labelCtx?: CanvasRenderingContext2D | null,
+  arenaDuel?: ActiveArenaDuel | null,
+) {
+  const bxOff = Math.floor(camX);
+
+  // Separate Pocket Dimension when ANY JJK Challenger unleashes their Domain Expansion!
+  if (arenaDuel?.domainActive) {
+    const cid = arenaDuel.challengerId;
+    const domainPalettes: Record<string, { top: string; mid: string; bot: string; accent: string; glow: string }> = {
+      satoru_gojo: { top: '#020617', mid: '#0c4a6e', bot: '#1e1b4b', accent: '#38bdf8', glow: '#e0f2fe' },
+      ryomen_sukuna: { top: '#090204', mid: '#450a0a', bot: '#7f1d1d', accent: '#ef4444', glow: '#fbbf24' },
+      toji_fushiguro: { top: '#090314', mid: '#3b0764', bot: '#1e1b4b', accent: '#a855f7', glow: '#e2e8f0' },
+      yuta_okkotsu: { top: '#0f0518', mid: '#4a044e', bot: '#1e1b4b', accent: '#e879f9', glow: '#7dd3fc' },
+      megumi_fushiguro: { top: '#020617', mid: '#1e1b4b', bot: '#09090b', accent: '#6366f1', glow: '#38bdf8' },
+      kento_nanami: { top: '#051914', mid: '#064e3b', bot: '#422006', accent: '#facc15', glow: '#10b981' },
+      yuji_itadori: { top: '#18050b', mid: '#7f1d1d', bot: '#1e1b4b', accent: '#fb7185', glow: '#fde047' },
+      suguru_geto: { top: '#090212', mid: '#4c1d95', bot: '#3b0764', accent: '#d946ef', glow: '#fde047' },
+      maki_zenin: { top: '#021610', mid: '#064e3b', bot: '#4c0519', accent: '#34d399', glow: '#f43f5e' },
+      kinji_hakari: { top: '#041f10', mid: '#14532d', bot: '#4c0519', accent: '#22c55e', glow: '#fde047' },
+      hajime_kashimo: { top: '#031525', mid: '#0e7490', bot: '#1e1b4b', accent: '#22d3ee', glow: '#e0f2fe' },
+      mahito: { top: '#04191e', mid: '#134e4a', bot: '#3b0764', accent: '#2dd4bf', glow: '#a855f7' },
+      jogo: { top: '#1a0602', mid: '#7c2d12', bot: '#991b1b', accent: '#f97316', glow: '#fef08a' },
+      choso: { top: '#1a030a', mid: '#881337', bot: '#4c0519', accent: '#fb7185', glow: '#ffe4e6' },
+      hiromi_higuruma: { top: '#120d05', mid: '#451a03', bot: '#1e293b', accent: '#fbbf24', glow: '#fef3c7' },
+      nobara_kugisaki: { top: '#1a0616', mid: '#831843', bot: '#1e1b4b', accent: '#f43f5e', glow: '#38bdf8' },
+    };
+    const pal = domainPalettes[cid] ?? domainPalettes.satoru_gojo;
+
+    const dGrad = ctx.createLinearGradient(0, 0, 0, PIXEL_H);
+    dGrad.addColorStop(0, pal.top);
+    dGrad.addColorStop(0.55, pal.mid);
+    dGrad.addColorStop(1, pal.bot);
+    ctx.fillStyle = dGrad;
+    ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
+
+    // Signature pocket-dimension visuals per JJK Domain!
+    ctx.save();
+    if (cid === 'satoru_gojo') {
+      const portalGrad = ctx.createRadialGradient(PIXEL_W / 2, 108, 6, PIXEL_W / 2, 108, 128);
+      portalGrad.addColorStop(0, '#ffffff');
+      portalGrad.addColorStop(0.22, '#38bdf8');
+      portalGrad.addColorStop(0.55, 'rgba(99, 102, 241, 0.35)');
+      portalGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = portalGrad;
+      ctx.beginPath();
+      ctx.arc(PIXEL_W / 2, 108, 128, 0, Math.PI * 2);
+      ctx.fill();
+      for (let s = 0; s < 36; s++) {
+        const sx = ((s * 67 + Math.floor(time * 24)) % PIXEL_W);
+        const sy = ((s * 43 + Math.floor(time * 14)) % 200);
+        pRect(ctx, sx, sy, s % 3 === 0 ? 3 : 2, 2, s % 2 === 0 ? '#e0f2fe' : '#a855f7');
+      }
+    } else if (cid === 'ryomen_sukuna') {
+      // Crimson Blood Moon & Malevolent Demon Shrine Silhouette
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.arc(PIXEL_W / 2, 74, 48, 0, Math.PI * 2);
+      ctx.fill();
+      pRect(ctx, PIXEL_W / 2 - 58, 134, 116, 12, '#09060b');
+      pRect(ctx, PIXEL_W / 2 - 44, 118, 88, 16, '#7f1d1d');
+      pRect(ctx, PIXEL_W / 2 - 34, 146, 12, 78, '#18181b');
+      pRect(ctx, PIXEL_W / 2 + 22, 146, 12, 78, '#18181b');
+      pRect(ctx, PIXEL_W / 2 - 14, 152, 28, 72, '#09060b');
+      // Floating crimson Dismantle slash streaks
+      ctx.strokeStyle = '#fb7185';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 10; i++) {
+        const lx = ((i * 53 + Math.floor(time * 90)) % PIXEL_W);
+        const ly = 40 + (i * 19) % 150;
+        ctx.beginPath();
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx + 24, ly - 16);
+        ctx.stroke();
+      }
+    } else if (cid === 'yuta_okkotsu') {
+      // Towering Rika spectral eyes & infinite planted katana blades
+      pRect(ctx, PIXEL_W / 2 - 38, 44, 24, 14, '#e879f9');
+      pRect(ctx, PIXEL_W / 2 + 14, 44, 24, 14, '#e879f9');
+      pRect(ctx, PIXEL_W / 2 - 30, 48, 8, 6, '#ffffff');
+      pRect(ctx, PIXEL_W / 2 + 22, 48, 8, 6, '#ffffff');
+      for (let k = -((bxOff % 44 + 44) % 44); k < PIXEL_W + 40; k += 44) {
+        pRect(ctx, k + 18, 154, 3, 70, '#cbd5e1');
+        pRect(ctx, k + 15, 158, 9, 3, '#fbbf24');
+      }
+    } else if (cid === 'megumi_fushiguro') {
+      // Flooded Liquid Shadow Sea & Chimera Bone Ribcage
+      pRect(ctx, 0, 198, PIXEL_W, 28, '#020617');
+      for (let r = 0; r < 7; r++) {
+        const rx = 68 + r * 58;
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(rx, 175, 42, Math.PI, Math.PI * 2);
+        ctx.stroke();
+      }
+    } else if (cid === 'kinji_hakari') {
+      // Neon Pachinko Casino Stage with Glowing 777 Spotlights!
+      for (let i = 0; i < 6; i++) {
+        const lx = 48 + i * 78;
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(34, 197, 94, 0.22)' : 'rgba(253, 224, 71, 0.22)';
+        ctx.beginPath();
+        ctx.moveTo(lx, 0);
+        ctx.lineTo(lx + 36, 0);
+        ctx.lineTo(lx + 68, 224);
+        ctx.lineTo(lx - 32, 224);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#fde047';
+      ctx.font = 'bold 28px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('7 7 7', PIXEL_W / 2, 86);
+    } else if (cid === 'jogo') {
+      // Coffin of the Iron Mountain Molten Volcano Caldera!
+      pRect(ctx, 0, 198, PIXEL_W, 26, '#f97316');
+      for (let v = 0; v < 5; v++) {
+        const vx = 42 + v * 98;
+        pRect(ctx, vx, 146, 36, 78, '#451a03');
+        pRect(ctx, vx + 10, 122 + Math.round(Math.sin(time * 8 + v) * 8), 16, 40, '#f97316');
+      }
+    } else if (cid === 'hiromi_higuruma') {
+      // Deadly Sentencing Grand Courtroom & Giant Golden Judgeman Scales
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(PIXEL_W / 2 - 80, 74);
+      ctx.lineTo(PIXEL_W / 2 + 80, 74);
+      ctx.moveTo(PIXEL_W / 2, 46);
+      ctx.lineTo(PIXEL_W / 2, 168);
+      ctx.stroke();
+      pRect(ctx, PIXEL_W / 2 - 96, 102, 32, 10, '#fbbf24');
+      pRect(ctx, PIXEL_W / 2 + 64, 102, 32, 10, '#fbbf24');
+    } else {
+      // Distinct Geometric / Energy Horizon for Remaining JJK Domains
+      ctx.strokeStyle = pal.accent;
+      ctx.lineWidth = 2;
+      for (let g = 0; g < 10; g++) {
+        const gx = ((g * 54 + Math.floor(time * 28)) % PIXEL_W);
+        ctx.beginPath();
+        ctx.moveTo(gx, 24);
+        ctx.lineTo(gx, 220);
+        ctx.stroke();
+      }
+      const orbGrad = ctx.createRadialGradient(PIXEL_W / 2, 92, 6, PIXEL_W / 2, 92, 86);
+      orbGrad.addColorStop(0, pal.glow);
+      orbGrad.addColorStop(0.5, `${pal.accent}88`);
+      orbGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = orbGrad;
+      ctx.beginPath();
+      ctx.arc(PIXEL_W / 2, 92, 86, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    if (labelCtx) {
+      drawCrispOverlayLabel(
+        labelCtx,
+        PIXEL_W / 2,
+        20,
+        `DOMAIN EXPANSION: ${arenaDuel.domainName.toUpperCase()} (${arenaDuel.domainTimer.toFixed(1)}s)`,
+        {
+          color: '#ffffff',
+          bg: 'rgba(15, 6, 24, 0.92)',
+          border: pal.accent,
+          fontSize: 20,
+          padX: 14,
+          padY: 5,
+        },
+      );
+    }
+    return;
+  }
+
+  // Dark Stormy Colosseum Sky with Animated Branching Lightning Bolts!
+  const boltPulse = Math.sin(time * 2.1) * Math.sin(time * 7.3);
+  const stormFlash = boltPulse > 0.78 ? 0.32 : 0;
+
+  const sky = ctx.createLinearGradient(0, 0, 0, 126);
+  sky.addColorStop(0, stormFlash > 0 ? '#1e1b4b' : '#03020a');
+  sky.addColorStop(0.55, stormFlash > 0 ? '#3b0764' : '#120826');
+  sky.addColorStop(1, '#241438');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, PIXEL_W, 126);
+
+  // Dark Rolling Storm Clouds
+  ctx.fillStyle = stormFlash > 0 ? '#4c1d95' : '#1b142c';
+  for (let c = 0; c < 6; c++) {
+    const cx = ((c * 96 - Math.floor(camX * 0.08)) % (PIXEL_W + 120) + PIXEL_W + 120) % (PIXEL_W + 120) - 60;
+    const cy = 6 + (c % 2) * 8;
+    pRect(ctx, cx, cy, 74, 14, stormFlash > 0 ? '#4c1d95' : '#1b142c');
+    pRect(ctx, cx + 12, cy - 5, 48, 8, stormFlash > 0 ? '#5b21b6' : '#241a3a');
+  }
+
+  // Flashing Jagged Lightning Bolts across the Dark Storm Sky
+  const drawColosseumLightning = (lx: number, segShift: number, bright: number) => {
+    if (bright <= 0.05) return;
+    ctx.save();
+    ctx.globalAlpha = bright;
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(lx, 0);
+    ctx.lineTo(lx - 10 + segShift, 18);
+    ctx.lineTo(lx + 12 - segShift, 34);
+    ctx.lineTo(lx - 6, 56);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Branch
+    ctx.strokeStyle = '#c084fc';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(lx + 12 - segShift, 34);
+    ctx.lineTo(lx + 26, 48);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  const b1 = Math.max(0, Math.sin(time * 2.1) * Math.sin(time * 7.3) * 1.4 - 0.35);
+  const b2 = Math.max(0, Math.cos(time * 1.7 + 1.3) * Math.sin(time * 6.5) * 1.4 - 0.45);
+  drawColosseumLightning(96 - Math.floor(camX * 0.05), Math.round(Math.sin(time * 20) * 3), Math.min(1, b1));
+  drawColosseumLightning(368 - Math.floor(camX * 0.05), Math.round(Math.cos(time * 18) * 3), Math.min(1, b2));
+
+  // Curved Colosseum Upper Stone Rim & Roman Travertine Arcades along back bowl
+  pRect(ctx, 0, 34, PIXEL_W, 122, '#57534e');
+  pRect(ctx, 0, 34, PIXEL_W, 6, '#a8a29e');
+  pRect(ctx, 0, 40, PIXEL_W, 4, '#fbbf24');
+
+  // Towering curved Colosseum Arcade Arches across upper perimeter (showing dark stormy sky!)
+  const arcadeStart = Math.floor((bxOff * 0.65 - 60) / 56);
+  for (let a = arcadeStart; a < arcadeStart + 12; a++) {
+    const ax = Math.round(a * 56 - bxOff * 0.65);
+    pRect(ctx, ax + 6, 44, 38, 34, '#1c1917');
+    pRect(ctx, ax + 10, 48, 30, 30, stormFlash > 0 ? '#3b0764' : '#0b0618'); // Dark storm sky through arches
+    pRect(ctx, ax + 10, 56, 30, 22, '#1e1b4b');
+    pRect(ctx, ax, 44, 7, 110, '#a8a29e');
+    pRect(ctx, ax + 44, 44, 7, 110, '#78716c');
+    if (a % 2 === 0) {
+      pRect(ctx, ax + 18, 44, 14, 22, '#991b1b');
+      pRect(ctx, ax + 22, 48, 6, 12, '#fbbf24');
+    }
+  }
+
+  // Grand Imperial Royal Box seated in center of Colosseum (world x=560..690)
+  const boxX = Math.round(560 - bxOff);
+  if (boxX > -150 && boxX < PIXEL_W + 40) {
+    pRect(ctx, boxX, 48, 130, 62, '#7f1d1d');
+    pRect(ctx, boxX - 4, 44, 138, 8, '#fbbf24');
+    pRect(ctx, boxX + 8, 56, 114, 46, '#450a0a');
+    pRect(ctx, boxX + 44, 68, 42, 34, '#d97706');
+    pRect(ctx, boxX + 54, 58, 22, 16, '#fef08a');
+  }
+
+  // 3 Steep Tiered Travertine Seating Stands Packed With Cheering Crowd Above!
+  const tierColors = ['#44403c', '#292524', '#57534e'];
+  const cloakPalette = ['#ef4444', '#3b82f6', '#eab308', '#10b981', '#ec4899', '#8b5cf6', '#f97316', '#14b8a6'];
+  const hairPalette = ['#1e293b', '#78350f', '#fde047', '#dc2626', '#cbd5e1', '#4c1d95'];
+
+  for (let row = 0; row < 3; row++) {
+    const tierY = 74 + row * 23;
+    pRect(ctx, 0, tierY + 12, PIXEL_W, 11, tierColors[row]);
+    pRect(ctx, 0, tierY + 11, PIXEL_W, 2, '#a8a29e');
+
+    const spacing = 22;
+    const startIdx = Math.floor((bxOff - 24) / spacing);
+    for (let i = startIdx; i < startIdx + 26; i++) {
+      const worldSx = i * spacing + (row % 2) * 11;
+      const sx = Math.round(worldSx - bxOff);
+      if (sx < -20 || sx > PIXEL_W + 20) continue;
+
+      const seed = Math.abs(i * 17 + row * 31);
+      const coat = cloakPalette[seed % cloakPalette.length];
+      const hair = hairPalette[(seed * 3) % hairPalette.length];
+      const excitedSpeed = hypeTimer > 0 ? 15 : 5.5;
+      const jump = hypeTimer > 0
+        ? -Math.abs(Math.round(Math.sin(time * excitedSpeed + seed) * 5))
+        : Math.round(Math.sin(time * excitedSpeed + seed) * 1.2);
+      const cheerArm = hypeTimer > 0 || seed % 3 === 0
+        ? Math.round(Math.sin(time * 12 + seed) * 3)
+        : 0;
+
+      pRect(ctx, sx, tierY + 2 + jump, 10, 11, coat);
+      pRect(ctx, sx + 1, tierY - 5 + jump, 8, 7, '#f3cba5');
+      pRect(ctx, sx + 1, tierY - 6 + jump, 8, 3, hair);
+      pRect(ctx, sx + 3, tierY - 3 + jump, 2, 2, '#0f172a');
+      pRect(ctx, sx + 6, tierY - 3 + jump, 2, 2, '#0f172a');
+      pRect(ctx, sx - 2, tierY + jump - Math.max(0, cheerArm), 2, 6, coat);
+      pRect(ctx, sx + 10, tierY + jump - Math.max(0, -cheerArm), 2, 6, coat);
+      if (seed % 5 === 0) {
+        pRect(ctx, sx + 11, tierY - 8 + jump - cheerArm, 2, 10, '#e2e8f0');
+        pRect(ctx, sx + 13, tierY - 8 + jump - cheerArm, 6, 4, '#fbbf24');
+      }
+    }
+  }
+
+  // Lower Gladiator Podium Retaining Wall, Vaulted Gladiator Gates & Flaming Braziers
+  pRect(ctx, 0, 148, PIXEL_W, 76, '#292524');
+  pRect(ctx, 0, 148, PIXEL_W, 5, '#fbbf24');
+  for (let ax = -((bxOff % 180 + 180) % 180); ax < PIXEL_W + 60; ax += 180) {
+    pRect(ctx, ax + 18, 158, 62, 66, '#57534e');
+    pRect(ctx, ax + 24, 164, 50, 60, '#09060b');
+    for (let bar = 0; bar < 4; bar++) {
+      pRect(ctx, ax + 30 + bar * 11, 166, 2, 58, '#475569');
+    }
+    pRect(ctx, ax + 104, 168, 10, 56, '#78716c');
+    pRect(ctx, ax + 101, 160, 16, 8, '#78350f');
+    pRect(ctx, ax + 103, 152 + Math.round(Math.sin(time * 12 + ax) * 2), 12, 10, '#f97316');
+    pRect(ctx, ax + 105, 155 + Math.round(Math.sin(time * 12 + ax) * 2), 8, 6, '#fde047');
+  }
+
+  // Colosseum Matchmaker Herald NPC & Ornate Challenger Registry Pedestal (world x=155..223)
+  const hrx = Math.round(186 - bxOff);
+  if (hrx > -70 && hrx < PIXEL_W + 70) {
+    pRect(ctx, hrx - 22, 184, 44, 40, '#44403c');
+    pRect(ctx, hrx - 25, 180, 50, 6, '#fbbf24');
+    pRect(ctx, hrx - 14, 168, 28, 12, '#7f1d1d');
+    const bob = Math.round(Math.sin(time * 3.5) * 1);
+    pRect(ctx, hrx - 6, 154 + bob, 12, 26, '#991b1b');
+    pRect(ctx, hrx - 3, 156 + bob, 6, 20, '#fbbf24');
+    pRect(ctx, hrx - 4, 144 + bob, 8, 9, '#f3cba5');
+    pRect(ctx, hrx - 5, 141 + bob, 10, 4, '#e2e8f0');
+    pRect(ctx, hrx + 8, 138, 2, 42, '#fbbf24');
+    if (labelCtx) {
+      drawCrispOverlayLabel(labelCtx, hrx, 130, 'CHALLENGER HERALD [F]', {
+        color: '#fef08a',
+        bg: 'rgba(127, 29, 29, 0.94)',
+        border: '#fbbf24',
+        fontSize: 19,
+        padX: 10,
+        padY: 4,
+      });
+    }
+  }
+
+  if (labelCtx) {
+    drawCrispOverlayLabel(labelCtx, PIXEL_W / 2, 20, 'SOLARIS STORM COLOSSEUM · LIVE CROWD ARENA', {
+      color: '#fef08a',
+      bg: 'rgba(10, 6, 20, 0.92)',
+      border: '#38bdf8',
+      fontSize: 20,
+      padX: 14,
+      padY: 5,
+    });
+  }
+}
+
+/**
+ * Renders highly detailed Jujutsu Kaisen Duel Challengers with faithful silhouettes, weapons, cursed auras,
+ * Cursed Energy Guard barriers, and Flash-Step Dodge afterimages!
+ */
+export function drawArenaChallenger(
+  ctx: CanvasRenderingContext2D,
+  duel: ActiveArenaDuel,
+  camX: number,
+  time: number,
+  frozen: boolean,
+  labelCtx?: CanvasRenderingContext2D | null,
+) {
+  const def = duel.def;
+  const sx = Math.round(duel.x - camX);
+  const sy = Math.round(duel.y);
+  if (sx < -90 || sx > PIXEL_W + 90) return;
+
+  const flash = duel.hitFlash > 0;
+  const bob = Math.round(Math.sin(time * 5 + duel.walkCycle) * 1.5);
+  const stride = Math.round(Math.sin(duel.walkCycle) * (Math.abs(duel.vx) > 8 ? 3 : 0));
+
+  // Translucent Flash-Step afterimage trail when dodging / invulnerable
+  if (duel.state === 'dodge' || duel.invulnTimer > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.38;
+    pRect(ctx, sx - duel.facing * 12, sy + 2, duel.w, duel.h - 2, def.auraColor);
+    ctx.globalAlpha = 0.2;
+    pRect(ctx, sx - duel.facing * 22, sy + 4, duel.w, duel.h - 4, def.auraColor);
+    ctx.restore();
+  }
+
+  // Ground shadow & cursed energy aura halo
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.fillRect(sx + 1, sy + duel.h - 2, duel.w - 2, 4);
+  ctx.fillStyle = def.auraColor;
+  ctx.globalAlpha = 0.25 + 0.1 * Math.sin(time * 9);
+  ctx.beginPath();
+  ctx.arc(sx + duel.w / 2, sy + duel.h * 0.52, 24, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(sx + duel.w / 2, sy + duel.h);
+  ctx.scale(duel.facing, 1);
+
+  const attackThrust = duel.state === 'attack' || duel.state === 'windup' ? 6 : 0;
+
+  // Striding footwear
+  pRect(ctx, -5 + stride, -8, 4, 8, '#0f172a');
+  pRect(ctx, 2 - stride, -8, 4, 8, '#1e293b');
+
+  // Character-accurate Jujutsu Kaisen Silhouette, Outfit, Hair, Face & Weapons
+  if (duel.challengerId === 'satoru_gojo') {
+    // Satoru Gojo: High-collar dark navy Jujutsu uniform, snow-white spiky hair, black blindfold + Limitless Blue/Red orbs
+    pRect(ctx, -8, -26 + bob, 16, 19, flash ? '#ffffff' : '#0f172a');
+    pRect(ctx, -6, -27 + bob, 12, 4, '#1e293b'); // High collar
+    pRect(ctx, 0, -23 + bob, 2, 13, '#fbbf24'); // Uniform gold button
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#fde6d8');
+    // Black Blindfold with Six Eyes cyan shimmer
+    pRect(ctx, -6, -32 + bob, 13, 4, '#09090b');
+    pRect(ctx, 2, -31 + bob, 3, 2, '#38bdf8');
+    // Snow-White Spiky Hair
+    pRect(ctx, -7, -38 + bob, 14, 6, flash ? '#ffffff' : '#f8fafc');
+    pRect(ctx, -5, -42 + bob, 4, 5, '#ffffff');
+    pRect(ctx, 1, -43 + bob, 4, 6, '#e2e8f0');
+    pRect(ctx, 5, -40 + bob, 3, 4, '#ffffff');
+    // Orbiting Limitless Blue & Reversal Red Spheres
+    const orbAngle = time * 4.5;
+    pRect(ctx, Math.round(Math.cos(orbAngle) * 16) - 2, -22 + Math.round(Math.sin(orbAngle) * 10), 5, 5, '#38bdf8');
+    pRect(ctx, Math.round(Math.cos(orbAngle + Math.PI) * 16) - 2, -22 + Math.round(Math.sin(orbAngle + Math.PI) * 10), 5, 5, '#ef4444');
+    // Hand-to-hand Infinity strike forward
+    pRect(ctx, 5 + attackThrust, -21 + bob, 8, 4, '#fde6d8');
+  } else if (duel.challengerId === 'ryomen_sukuna') {
+    // Ryomen Sukuna: White Heian kimono w/ crimson sash, black wrist tattoos, spiky salmon-pink hair, facial marks + Kamutoke
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#f8fafc');
+    pRect(ctx, -7, -14 + bob, 14, 4, '#dc2626'); // Crimson obi sash
+    pRect(ctx, -8, -25 + bob, 5, 16, '#18181b'); // Black kimono lapel
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#f3cba5');
+    // Sukuna black forehead/cheek markings & 4 crimson eyes!
+    pRect(ctx, -5, -33 + bob, 2, 2, '#09090b');
+    pRect(ctx, 2, -31 + bob, 3, 2, '#dc2626');
+    pRect(ctx, 2, -28 + bob, 2, 2, '#ef4444');
+    pRect(ctx, -1, -29 + bob, 2, 3, '#09090b');
+    // Spiky salmon-pink hair
+    pRect(ctx, -7, -38 + bob, 14, 5, '#fda4af');
+    pRect(ctx, -3, -41 + bob, 7, 4, '#fb7185');
+    // Kamutoke golden vajra + crimson Shrine slash arc
+    pRect(ctx, 7 + attackThrust, -26 + bob, 3, 18, '#fbbf24');
+    pRect(ctx, 5 + attackThrust, -28 + bob, 7, 4, '#fde047');
+    if (attackThrust > 0) {
+      pRect(ctx, 13 + attackThrust, -28 + bob, 10, 2, '#f43f5e');
+      pRect(ctx, 15 + attackThrust, -18 + bob, 10, 2, '#fb923c');
+    }
+  } else if (duel.challengerId === 'toji_fushiguro') {
+    // Toji Fushiguro: Tight black muscle shirt, baggy white martial trousers, purple Inventory Worm curse draped, Inverted Spear!
+    pRect(ctx, -6 + stride, -9, 5, 9, '#f1f5f9'); // Baggy white pants
+    pRect(ctx, 1 - stride, -9, 5, 9, '#e2e8f0');
+    pRect(ctx, -8, -25 + bob, 16, 16, flash ? '#ffffff' : '#18181b');
+    // Coiled Purple Inventory Worm Curse across shoulder
+    pRect(ctx, -9, -24 + bob, 16, 5, '#7e22ce');
+    pRect(ctx, -10, -21 + bob, 5, 4, '#a855f7');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#f3cba5');
+    pRect(ctx, 2, -27 + bob, 3, 1, '#9f1239'); // Lip scar
+    pRect(ctx, 2, -31 + bob, 3, 2, '#09090b');
+    // Messy black hair
+    pRect(ctx, -7, -38 + bob, 14, 5, '#09090b');
+    pRect(ctx, 3, -36 + bob, 4, 4, '#09090b');
+    // Inverted Spear of Heaven (two-pronged sai-dagger w/ silver sheen)
+    pRect(ctx, 7 + attackThrust, -22 + bob, 13, 3, '#cbd5e1');
+    pRect(ctx, 11 + attackThrust, -26 + bob, 7, 2, '#a855f7');
+  } else if (duel.challengerId === 'yuta_okkotsu') {
+    // Yuta Okkotsu: Iconic White zip-up Jujutsu tunic, messy dark navy hair, Katana & hovering Rika shadow silhouette behind!
+    // Hovering Rika Manifestation aura behind back
+    const rFloat = Math.round(Math.sin(time * 6) * 2);
+    ctx.fillStyle = 'rgba(168, 85, 247, 0.45)';
+    ctx.fillRect(-19, -38 + rFloat, 11, 22);
+    pRect(ctx, -16, -35 + rFloat, 4, 3, '#fdf4ff'); // Rika glowing eye!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#f8fafc');
+    pRect(ctx, 0, -24 + bob, 2, 16, '#1e293b');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#fde6d8');
+    pRect(ctx, 2, -31 + bob, 3, 2, '#1e1b4b');
+    pRect(ctx, -7, -38 + bob, 14, 6, '#1e1b4b');
+    // Cursed Energy Katana
+    pRect(ctx, 6 + attackThrust, -20 + bob, 18, 2, '#e2e8f0');
+    pRect(ctx, 8 + attackThrust, -21 + bob, 14, 1, '#c084fc');
+  } else if (duel.challengerId === 'megumi_fushiguro') {
+    // Megumi Fushiguro: Dark navy Jujutsu jacket, tall sea-urchin spiky black hair, jet-black blade & Divine Dog silhouette!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#1e293b');
+    pRect(ctx, -4, -24 + bob, 8, 5, '#0f172a');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#f3cba5');
+    pRect(ctx, 2, -31 + bob, 3, 2, '#0284c7');
+    // Classic tall sea-urchin spiky hair!
+    pRect(ctx, -8, -39 + bob, 16, 6, '#09090b');
+    pRect(ctx, -9, -43 + bob, 4, 5, '#09090b');
+    pRect(ctx, -2, -45 + bob, 5, 7, '#09090b');
+    pRect(ctx, 5, -42 + bob, 4, 5, '#09090b');
+    // Flanking Ten Shadows Divine Dog paw-silhouette
+    pRect(ctx, -18, -14 + bob, 9, 10, '#09090b');
+    pRect(ctx, -17, -18 + bob, 3, 4, '#f8fafc');
+    // Jet-Black Shadow Blade
+    pRect(ctx, 6 + attackThrust, -20 + bob, 17, 3, '#334155');
+    pRect(ctx, 8 + attackThrust, -19 + bob, 14, 1, '#38bdf8');
+  } else if (duel.challengerId === 'kento_nanami') {
+    // Kento Nanami: Tan business suit, dotted yellow tie, blonde side-parted hair, tinted green glasses, wrapped blunt cleaver!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#d6d3d1');
+    pRect(ctx, -2, -24 + bob, 4, 14, '#f8fafc');
+    pRect(ctx, -1, -23 + bob, 2, 11, '#ca8a04');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#f3cba5');
+    pRect(ctx, 1, -31 + bob, 5, 3, '#10b981');
+    pRect(ctx, -7, -38 + bob, 14, 5, '#fde047');
+    pRect(ctx, -4, -39 + bob, 8, 3, '#facc15');
+    pRect(ctx, 6 + attackThrust, -22 + bob, 15, 5, '#e7e5e4');
+    pRect(ctx, 9 + attackThrust, -21 + bob, 3, 3, '#f8fafc');
+    pRect(ctx, 15 + attackThrust, -21 + bob, 3, 3, '#f8fafc');
+    if (attackThrust > 0) {
+      pRect(ctx, 21 + attackThrust, -24 + bob, 2, 9, '#facc15');
+    }
+  } else if (duel.challengerId === 'yuji_itadori') {
+    // Yuji Itadori: Dark Jujutsu High uniform, signature bright crimson hoodie collar, spiky salmon-pink hair, Black Flash gauntlets!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#0f172a');
+    pRect(ctx, -9, -27 + bob, 18, 5, '#ef4444'); // Red hoodie!
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#fde6d8');
+    pRect(ctx, 2, -31 + bob, 3, 2, '#78350f');
+    pRect(ctx, 1, -28 + bob, 3, 1, '#9f1239'); // Battle scar
+    pRect(ctx, -7, -39 + bob, 14, 6, '#fda4af'); // Salmon-pink hair
+    pRect(ctx, -4, -42 + bob, 8, 4, '#fb7185');
+    pRect(ctx, 5 + attackThrust, -21 + bob, 9, 6, '#09090b'); // Black Flash crimson-black fist
+    pRect(ctx, 8 + attackThrust, -20 + bob, 6, 4, '#ef4444');
+  } else if (duel.challengerId === 'suguru_geto') {
+    // Suguru Geto: Deep indigo-purple monk kesa robes w/ gold sash, long black half-bun hair + bangs, Playful Cloud 3-section staff!
+    pRect(ctx, -9, -25 + bob, 18, 19, flash ? '#ffffff' : '#4c1d95');
+    pRect(ctx, -7, -24 + bob, 14, 5, '#eab308'); // Gold monk kesa
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#f3cba5');
+    pRect(ctx, -2, -34 + bob, 6, 1, '#09090b'); // Forehead stitches
+    pRect(ctx, -8, -38 + bob, 16, 5, '#09090b');
+    pRect(ctx, -4, -43 + bob, 6, 5, '#09090b'); // Top bun
+    pRect(ctx, 4, -34 + bob, 2, 6, '#09090b'); // Signature bang
+    pRect(ctx, 7 + attackThrust, -24 + bob, 14, 3, '#dc2626'); // Playful Cloud crimson staff
+    pRect(ctx, 13 + attackThrust, -25 + bob, 2, 5, '#fbbf24');
+  } else if (duel.challengerId === 'maki_zenin') {
+    // Maki Zenin: Dark Jujutsu combat gear, crimson waist wrap, sea-green ponytail hair, burn scars, glowing Split Soul Katana!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#18181b');
+    pRect(ctx, -8, -14 + bob, 16, 4, '#be123c');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#f3cba5');
+    pRect(ctx, 0, -33 + bob, 4, 4, '#fb7185'); // Scar
+    pRect(ctx, -8, -39 + bob, 15, 6, '#059669'); // Sea-green hair
+    pRect(ctx, -12, -37 + bob, 5, 11, '#047857'); // Ponytail
+    pRect(ctx, 6 + attackThrust, -21 + bob, 19, 3, '#e2e8f0'); // Split Soul Katana
+    pRect(ctx, 9 + attackThrust, -22 + bob, 15, 1, '#34d399');
+  } else if (duel.challengerId === 'kinji_hakari') {
+    // Kinji Hakari: White fur-trimmed coat w/ purple accents, blonde pompadour, neon emerald jagged aura!
+    pRect(ctx, -9, -25 + bob, 18, 18, flash ? '#ffffff' : '#f8fafc');
+    pRect(ctx, -6, -24 + bob, 12, 5, '#9333ea');
+    pRect(ctx, -3, -21 + bob, 6, 12, '#fde6d8');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#f3cba5');
+    pRect(ctx, -7, -40 + bob, 15, 7, '#fef08a'); // Blonde pompadour
+    pRect(ctx, 2, -42 + bob, 7, 4, '#fde047');
+    pRect(ctx, 6 + attackThrust, -21 + bob, 9, 6, '#22c55e'); // Rough emerald fist
+    pRect(ctx, -16, -22 + bob, 6, 6, '#fde047'); // Floating 777 Pachinko orb
+  } else if (duel.challengerId === 'hajime_kashimo') {
+    // Hajime Kashimo: White ancient kimono robes, electric cyan hair & lightning cheek scars, cyan Nyoi Staff!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#f8fafc');
+    pRect(ctx, -7, -15 + bob, 14, 3, '#0891b2');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#fde6d8');
+    pRect(ctx, 2, -30 + bob, 3, 4, '#06b6d4'); // Lightning scar!
+    pRect(ctx, -8, -40 + bob, 16, 7, '#67e8f9'); // Mint-cyan spiky hair
+    pRect(ctx, -10, -35 + bob, 4, 8, '#22d3ee');
+    pRect(ctx, 8 + attackThrust, -32 + bob, 3, 28, '#bae6fd'); // Electric Nyoi Staff
+    pRect(ctx, 7 + attackThrust, -34 + bob, 5, 4, '#22d3ee');
+  } else if (duel.challengerId === 'mahito') {
+    // Mahito: Stitched grey-blue skin & hair, patchwork black scars, dark tunic, spiked purple transfigured blade-arm!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#1e293b');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#cbd5e1'); // Pale grey-blue face
+    pRect(ctx, -4, -33 + bob, 8, 2, '#09090b'); // Stitches
+    pRect(ctx, 2, -31 + bob, 2, 2, '#06b6d4');
+    pRect(ctx, 0, -28 + bob, 4, 2, '#09090b');
+    pRect(ctx, -9, -39 + bob, 18, 7, '#94a3b8'); // Long messy grey-blue hair
+    pRect(ctx, -10, -34 + bob, 4, 14, '#64748b');
+    pRect(ctx, 6 + attackThrust, -23 + bob, 18, 6, '#a855f7'); // Transfigured Spike Blade Arm!
+    pRect(ctx, 18 + attackThrust, -21 + bob, 6, 3, '#2dd4bf');
+  } else if (duel.challengerId === 'jogo') {
+    // Jogo: Dark monk cloak, charred grey-black body, huge single cyclops eye, volcanic crater head erupting magma!
+    pRect(ctx, -9, -24 + bob, 18, 17, flash ? '#ffffff' : '#1c1917');
+    pRect(ctx, -7, -23 + bob, 14, 4, '#7c2d12');
+    pRect(ctx, -7, -36 + bob, 14, 13, flash ? '#ffffff' : '#44403c'); // Volcano head!
+    pRect(ctx, -4, -41 + bob, 8, 5, '#dc2626'); // Glowing crater rim
+    pRect(ctx, -3, -45 - Math.abs(bob), 6, 5, '#fde047'); // Erupting flame!
+    pRect(ctx, 0, -32 + bob, 5, 5, '#ffffff'); // Cyclops eye
+    pRect(ctx, 2, -31 + bob, 2, 3, '#09090b');
+    pRect(ctx, 6 + attackThrust, -21 + bob, 10, 7, '#f97316'); // Magma fist
+  } else if (duel.challengerId === 'choso') {
+    // Choso: Dark purple coat & crimson shawl, black twin-ponytail hair, horizontal nose stripe, orbiting Blood Supernova orbs!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#312e81');
+    pRect(ctx, -9, -26 + bob, 18, 6, '#881337');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#f3cba5');
+    pRect(ctx, -4, -30 + bob, 9, 2, '#be123c'); // Signature nose bridge stripe!
+    pRect(ctx, -7, -39 + bob, 14, 6, '#09090b');
+    pRect(ctx, -11, -39 + bob, 4, 9, '#09090b'); // High pigtails
+    const ba = time * 5;
+    pRect(ctx, Math.round(Math.cos(ba) * 16) - 2, -22 + Math.round(Math.sin(ba) * 9), 5, 5, '#e11d48');
+    pRect(ctx, 6 + attackThrust, -21 + bob, 14, 4, '#fb7185'); // Piercing Blood jet
+  } else if (duel.challengerId === 'hiromi_higuruma') {
+    // Hiromi Higuruma: Dark prosecutor suit & gold tie, glasses, sleek black hair, blazing golden Executioner's Sword!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#1e293b');
+    pRect(ctx, -2, -24 + bob, 4, 13, '#f8fafc');
+    pRect(ctx, -1, -23 + bob, 2, 10, '#fbbf24');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#fde6d8');
+    pRect(ctx, 1, -31 + bob, 5, 2, '#cbd5e1'); // Thin glasses
+    pRect(ctx, -7, -38 + bob, 14, 5, '#0f172a');
+    pRect(ctx, 6 + attackThrust, -21 + bob, 19, 4, '#fde047'); // Executioner's Sword!
+    pRect(ctx, 9 + attackThrust, -20 + bob, 14, 2, '#ffffff');
+  } else {
+    // Nobara Kugisaki: Dark navy Jujutsu uniform, orange-auburn bob hair, wooden Cursed Hammer + floating glowing nails!
+    pRect(ctx, -8, -25 + bob, 16, 18, flash ? '#ffffff' : '#1e1b4b');
+    pRect(ctx, -6, -13 + bob, 12, 4, '#be185d');
+    pRect(ctx, -6, -34 + bob, 12, 9, flash ? '#ffffff' : '#fde6d8');
+    pRect(ctx, 2, -31 + bob, 3, 2, '#f97316');
+    pRect(ctx, -8, -39 + bob, 16, 7, '#ea580c'); // Auburn bob hair
+    pRect(ctx, -9, -35 + bob, 3, 7, '#c2410c');
+    pRect(ctx, 6 + attackThrust, -20 + bob, 11, 3, '#92400e'); // Cursed Hammer
+    pRect(ctx, 14 + attackThrust, -24 + bob, 5, 10, '#e2e8f0');
+    pRect(ctx, -15, -24 + bob, 5, 2, '#38bdf8'); // Floating cursed nail
+    pRect(ctx, -15, -18 + bob, 5, 2, '#f43f5e');
+  }
+
+  // Active Cursed Energy Guard Barrier
+  if (duel.guardTimer > 0) {
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-14, -40, 28, 42);
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
+    ctx.fillRect(-14, -40, 28, 42);
+  }
+
+  if (duel.stunTimer > 0) {
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-12, -38, 24, 40);
+  } else if (frozen) {
+    ctx.strokeStyle = '#34d399';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-12, -38, 24, 40);
+  }
+  ctx.restore();
+
+  if (labelCtx) {
+    const tagText = duel.aiActionTag ? `${def.name} · ${duel.aiActionTag}` : `${def.name} · JJK`;
+    drawCrispOverlayLabel(labelCtx, sx + duel.w / 2, sy - 24, tagText, {
+      color: '#fef08a',
+      bg: 'rgba(10, 6, 16, 0.92)',
+      border: def.auraColor,
+      fontSize: 20,
+      padX: 10,
+      padY: 4,
+    });
+    if (duel.activeSkillBanner) {
+      drawCrispOverlayLabel(labelCtx, sx + duel.w / 2, sy - 42, `⚡ ${duel.activeSkillBanner}`, {
+        color: '#ffffff',
+        bg: 'rgba(88, 28, 135, 0.94)',
+        border: '#fbbf24',
+        fontSize: 21,
+        padX: 12,
+        padY: 4,
+      });
+    }
+  } else {
+    ctx.font = 'bold 6px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fde047';
+    ctx.fillText(def.name, sx + duel.w / 2, sy - 14);
+  }
+
+  // Challenger HP bar
+  const barW = 42;
+  const bx = Math.round(sx + duel.w / 2 - barW / 2);
+  pRect(ctx, bx, sy - 9, barW, 5, '#09060b');
+  pRect(ctx, bx + 1, sy - 8, Math.round(((barW - 2) * duel.hp) / Math.max(1, duel.maxHp)), 3, def.auraColor);
+}
+
+/**
+ * Animated Caravan Rider Travel Transition Pause:
+ * Guild Coach & Draft Steed trotting along the green frontier road while travelling to the Dungeon or Town!
+ */
+export function drawCaravanRideCutscene(
+  ctx: CanvasRenderingContext2D,
+  labelCtx: CanvasRenderingContext2D | null,
+  destinationLabel: string,
+  progress: number,
+  time: number,
+) {
+  ctx.save();
+  const grad = ctx.createLinearGradient(0, 0, 0, PIXEL_H);
+  grad.addColorStop(0, '#0284c7');
+  grad.addColorStop(0.58, '#bae6fd');
+  grad.addColorStop(1, '#dcfce7');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, PIXEL_W, PIXEL_H);
+
+  drawAnimeCloud(ctx, 80 - ((time * 24) % 520), 26, 66);
+  drawAnimeCloud(ctx, 300 - ((time * 18) % 520), 42, 54);
+
+  // Rolling forest silhouette
+  const hillOff = Math.floor(time * 95) % 160;
+  for (let i = -1; i <= 4; i++) {
+    const tx = i * 160 - hillOff;
+    pRect(ctx, tx, 154, 160, 72, '#15803d');
+    pRect(ctx, tx + 24, 114, 12, 110, '#451a03');
+    pRect(ctx, tx + 6, 82, 48, 40, '#16a34a');
+    pRect(ctx, tx + 102, 126, 10, 98, '#451a03');
+    pRect(ctx, tx + 86, 94, 42, 36, '#14532d');
+  }
+
+  // Country Dirt Road
+  pRect(ctx, 0, 222, PIXEL_W, 48, '#78350f');
+  pRect(ctx, 0, 222, PIXEL_W, 4, '#d97706');
+
+  // Galloping Draft Steed & Guild Covered Caravan across the screen!
+  const carX = Math.round(70 + progress * 210);
+  const bounce = Math.round(Math.abs(Math.sin(time * 14)) * 2);
+
+  // Guild Canopy & Wagon
+  pRect(ctx, carX, 174 + bounce, 72, 38, '#065f46');
+  pRect(ctx, carX + 6, 168 + bounce, 60, 8, '#047857');
+  pRect(ctx, carX, 174 + bounce, 72, 3, '#fbbf24');
+  pRect(ctx, carX - 2, 198 + bounce, 76, 16, '#78350f');
+  // Vance driving reins at front box
+  pRect(ctx, carX + 60, 178 + bounce, 10, 14, '#292524');
+  pRect(ctx, carX + 61, 170 + bounce, 8, 8, '#f3cba5');
+  pRect(ctx, carX + 58, 168 + bounce, 14, 3, '#1e293b');
+  // Rotating spoked wheels
+  for (const wx of [carX + 14, carX + 56]) {
+    ctx.save();
+    ctx.translate(wx, 216);
+    ctx.rotate(time * 9);
+    ctx.strokeStyle = '#451a03';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    pRect(ctx, -7, -1, 14, 2, '#94a3b8');
+    pRect(ctx, -1, -7, 2, 14, '#94a3b8');
+    ctx.restore();
+  }
+  // Steed
+  const hx = carX + 78;
+  pRect(ctx, hx, 196 + bounce, 24, 13, '#7c2d12');
+  pRect(ctx, hx + 18, 184 + bounce, 7, 15, '#7c2d12');
+  pRect(ctx, hx + 22, 184 + bounce, 6, 5, '#9a3412');
+  const leg = Math.round(Math.sin(time * 18) * 3);
+  pRect(ctx, hx + 2 + leg, 209, 3, 14, '#451a03');
+  pRect(ctx, hx + 16 - leg, 209, 3, 14, '#451a03');
+
+  // Travel Progress Plaque
+  pRect(ctx, 84, 24, PIXEL_W - 168, 36, 'rgba(9, 6, 14, 0.88)');
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(84, 24, PIXEL_W - 168, 36);
+  pRect(ctx, 100, 48, PIXEL_W - 200, 5, '#1e293b');
+  pRect(ctx, 100, 48, Math.round((PIXEL_W - 200) * Math.min(1, progress)), 5, '#34d399');
+
+  if (labelCtx) {
+    drawCrispOverlayLabel(labelCtx, PIXEL_W / 2, 36, `CARAVAN EXPEDITION -> ${destinationLabel.toUpperCase()}`, {
+      color: '#fef08a',
+      bg: 'rgba(12, 8, 16, 0.92)',
+      border: '#fbbf24',
+      fontSize: 21,
+      padX: 12,
+      padY: 4,
+    });
+  } else {
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`RIDING TO: ${destinationLabel.toUpperCase()}`, PIXEL_W / 2, 41);
+  }
+  ctx.restore();
+}
+
+/**
+ * Large Anime-Accurate Pixel Sprites for the 20-Minute Solaris Town Raiders:
+ * 1. Rimuru Tempest (True Demon Lord): Long silver-ice-blue hair, deep midnight-blue & gold coat,
+ *    plush Direwolf fur scarf collar, luminous golden eyes, Shizue's white mask w/ red stripes,
+ *    orbiting translucent blue Slime orb & Demon Lord Katana!
+ * 2. Goblin Slayer (Silver-Rank Exterminator): Worn silver cut-horn helmet w/ shadow visor &
+ *    gleaming scarlet-red eye trail, flowing crimson plume, grimy boiled leather/chainmail plate,
+ *    utility belt scrolls/potions, spiked round buckler shield & short sword!
+ */
+export function drawTownRaidBoss(
+  ctx: CanvasRenderingContext2D,
+  raid: ActiveTownRaid,
+  camX: number,
+  time: number,
+  frozen: boolean,
+  labelCtx?: CanvasRenderingContext2D | null,
+) {
+  const sx = Math.round(raid.x - camX);
+  const sy = Math.round(raid.y);
+  if (sx < -120 || sx > PIXEL_W + 120) return;
+
+  const flash = raid.hitFlash > 0;
+  const bob = Math.round(Math.sin(time * 5 + raid.walkCycle) * 2);
+  const stride = Math.round(Math.sin(raid.walkCycle) * (Math.abs(raid.vx) > 8 ? 4 : 0));
+  const atkThrust = raid.state === 'attack' || raid.state === 'windup' ? 8 : 0;
+
+  ctx.save();
+  // Ground shadow & ominous raid aura
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.52)';
+  ctx.fillRect(sx - 2, sy + raid.h - 3, raid.w + 4, 6);
+  ctx.fillStyle = raid.raiderId === 'rimuru_tempest' ? 'rgba(56, 189, 248, 0.24)' : 'rgba(220, 38, 38, 0.24)';
+  ctx.beginPath();
+  ctx.arc(sx + raid.w / 2, sy + raid.h * 0.5, 34, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.translate(sx + raid.w / 2, sy + raid.h);
+  ctx.scale(raid.facing, 1);
+
+  if (raid.raiderId === 'rimuru_tempest') {
+    // 1. Long cascading silver-ice-blue back hair flowing past Demon Lord coat
+    pRect(ctx, -16, -46 + bob, 22, 34, flash ? '#ffffff' : '#38bdf8');
+    pRect(ctx, -14, -44 + bob, 18, 30, flash ? '#ffffff' : '#7dd3fc');
+    // 2. Boots
+    pRect(ctx, -10 + stride, -11, 6, 11, '#09090b');
+    pRect(ctx, 4 - stride, -11, 6, 11, '#1e293b');
+    // 3. White-and-gold kimono tunic + loose dark Demon Lord trousers
+    pRect(ctx, -11, -34 + bob, 22, 24, '#f8fafc');
+    pRect(ctx, -10, -24 + bob, 20, 4, '#eab308');
+    // 4. Deep midnight-blue / black Demon Lord Haori Coat with gold border trims!
+    pRect(ctx, -15, -36 + bob, 30, 26, flash ? '#ffffff' : '#0f172a');
+    pRect(ctx, -13, -34 + bob, 8, 22, '#1e1b4b');
+    pRect(ctx, 5, -34 + bob, 8, 22, '#1e1b4b');
+    pRect(ctx, -15, -13 + bob, 30, 3, '#fbbf24'); // Gold coat hem
+    pRect(ctx, -15, -36 + bob, 3, 24, '#fbbf24'); // Gold front piping
+    pRect(ctx, 12, -36 + bob, 3, 24, '#fbbf24');
+    // 5. Plush Ranga Direwolf Fur Collar Scarf around neck/shoulders!
+    pRect(ctx, -16, -38 + bob, 32, 7, '#e2e8f0');
+    pRect(ctx, -14, -39 + bob, 28, 4, '#f8fafc');
+    pRect(ctx, -12, -35 + bob, 24, 3, '#cbd5e1');
+    // 6. Head & Luminous Golden Eyes + Bangs
+    pRect(ctx, -9, -51 + bob, 18, 13, flash ? '#ffffff' : '#fde6d8');
+    pRect(ctx, 1, -46 + bob, 5, 3, '#fbbf24'); // Golden eyes
+    pRect(ctx, -10, -54 + bob, 20, 7, '#7dd3fc'); // Silver-blue top hair
+    pRect(ctx, -12, -50 + bob, 5, 12, '#bae6fd'); // Side hair lock
+    pRect(ctx, 6, -50 + bob, 4, 10, '#38bdf8');
+    // Shizue's Antique White Mask worn angled on side of temple (red stripe markings!)
+    pRect(ctx, -11, -55 + bob, 9, 8, '#ffffff');
+    pRect(ctx, -9, -53 + bob, 4, 2, '#f43f5e');
+    // 7. Demon Lord Katana + Orbiting Translucent Blue Demon Slime Form!
+    pRect(ctx, 10 + atkThrust, -26 + bob, 24, 3, '#e2e8f0');
+    pRect(ctx, 8 + atkThrust, -27 + bob, 4, 5, '#fbbf24');
+    const orbY = -42 + Math.round(Math.sin(time * 4.5) * 4);
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.78)';
+    ctx.beginPath();
+    ctx.arc(-22, orbY, 7, 0, Math.PI * 2);
+    ctx.fill();
+    pRect(ctx, -24, orbY - 2, 4, 2, '#e0f2fe');
+  } else {
+    // GOBLIN SLAYER: Rugged Boiled Leather & Worn Silver Plate + Cut-Horn Full Helm + Glowing Red Eye + Crimson Plume!
+    const plumeWave = Math.round(Math.sin(time * 9) * 3);
+    // 1. Flowing Crimson Cloth Plume streaming behind helmet
+    pRect(ctx, -24, -49 + bob + plumeWave, 14, 5, '#dc2626');
+    pRect(ctx, -28, -46 + bob - plumeWave, 10, 4, '#991b1b');
+    // 2. Greaves & boots
+    pRect(ctx, -10 + stride, -12, 7, 12, '#334155');
+    pRect(ctx, 3 - stride, -12, 7, 12, '#475569');
+    // 3. Boiled dark-leather tunic + chainmail skirt + steel chestplate
+    pRect(ctx, -14, -36 + bob, 28, 25, flash ? '#ffffff' : '#1e293b');
+    pRect(ctx, -12, -35 + bob, 24, 14, flash ? '#ffffff' : '#475569'); // Worn chestplate
+    pRect(ctx, -16, -37 + bob, 9, 8, '#64748b'); // Steel pauldrons
+    pRect(ctx, 7, -37 + bob, 9, 8, '#64748b');
+    // Utility Belt w/ Potion Vials & Scroll
+    pRect(ctx, -14, -20 + bob, 28, 4, '#78350f');
+    pRect(ctx, -10, -21 + bob, 4, 6, '#ef4444'); // Red healing flask
+    pRect(ctx, -3, -21 + bob, 4, 6, '#fef08a'); // Gate Scroll case
+    // 4. Rounded Full-Coverage Silver Steel Helmet (horns sawed off!)
+    pRect(ctx, -10, -52 + bob, 20, 16, flash ? '#ffffff' : '#94a3b8');
+    pRect(ctx, -8, -54 + bob, 16, 4, '#cbd5e1');
+    pRect(ctx, -11, -50 + bob, 3, 3, '#475569'); // Cut-off left horn stub
+    pRect(ctx, 8, -50 + bob, 3, 3, '#475569'); // Cut-off right horn stub
+    // Dark Vertical Grill Visor + Glowing Scarlet-Red Eye Streak!
+    pRect(ctx, -4, -47 + bob, 14, 8, '#09090b');
+    pRect(ctx, 0, -45 + bob, 9, 2, '#94a3b8');
+    pRect(ctx, 2, -45 + bob, 4, 3, '#ef4444'); // Gleaming crimson eye
+    pRect(ctx, -8, -45 + bob, 10, 2, 'rgba(239, 68, 68, 0.72)'); // Trailing red eye glare!
+    // 5. Practical Short Sword (right hand) + Spiked Round Steel Buckler Shield (left/front!)
+    pRect(ctx, 10 + atkThrust, -28 + bob, 17, 4, '#cbd5e1');
+    pRect(ctx, 11 + atkThrust, -30 + bob, 3, 8, '#475569');
+    pRect(ctx, -4 + Math.round(atkThrust * 0.5), -32 + bob, 13, 15, '#64748b');
+    pRect(ctx, -2 + Math.round(atkThrust * 0.5), -30 + bob, 9, 11, '#94a3b8');
+    pRect(ctx, 1 + Math.round(atkThrust * 0.5), -26 + bob, 3, 3, '#e2e8f0');
+  }
+
+  if ((raid.stunTimer ?? 0) > 0 || frozen) {
+    ctx.strokeStyle = frozen ? '#34d399' : '#facc15';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-18, -56, 36, 58);
+  }
+  ctx.restore();
+
+  if (labelCtx) {
+    drawCrispOverlayLabel(labelCtx, sx + raid.w / 2, sy - 24, `TOWN RAIDER · ${raid.name.toUpperCase()}`, {
+      color: '#fef08a',
+      bg: raid.raiderId === 'rimuru_tempest' ? 'rgba(12, 74, 110, 0.94)' : 'rgba(127, 29, 29, 0.94)',
+      border: raid.raiderId === 'rimuru_tempest' ? '#38bdf8' : '#ef4444',
+      fontSize: 21,
+      padX: 12,
+      padY: 4,
+    });
+    if (raid.activeSkillBanner) {
+      drawCrispOverlayLabel(labelCtx, sx + raid.w / 2, sy - 44, `☠ ${raid.activeSkillBanner}`, {
+        color: '#ffffff',
+        bg: 'rgba(9, 6, 14, 0.94)',
+        border: '#fbbf24',
+        fontSize: 22,
+        padX: 12,
+        padY: 5,
+      });
+    }
+  }
+
+  const barW = 56;
+  const bx = Math.round(sx + raid.w / 2 - barW / 2);
+  pRect(ctx, bx, sy - 9, barW, 5, '#09060b');
+  pRect(
+    ctx,
+    bx + 1,
+    sy - 8,
+    Math.round(((barW - 2) * raid.hp) / Math.max(1, raid.maxHp)),
+    3,
+    raid.raiderId === 'rimuru_tempest' ? '#38bdf8' : '#ef4444',
+  );
+}
+
+

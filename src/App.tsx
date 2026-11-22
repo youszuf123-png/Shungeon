@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BossBattleOverlay } from './components/BossBattleOverlay';
+import { CaravanRiderModal } from './components/CaravanRiderModal';
 import { CheckpointMapModal } from './components/CheckpointMapModal';
+import { DuelingArenaModal } from './components/DuelingArenaModal';
 import { GameHud } from './components/GameHud';
 import { GuildInviteToast } from './components/GuildInviteToast';
 import { GuildModal } from './components/GuildModal';
@@ -67,18 +69,30 @@ const INITIAL_HUD: HudSnapshot = {
   idleSecondsToIsekai: ISEKAI_IDLE_TRANSPORT_SECONDS,
   realm: 'citadel',
   guildRank: 'F',
+  rankMissionsCompleted: 0,
+  missionsRequiredPerRank: 5,
   bRankEscortsCompleted: 0,
+  acceptedMissionId: null,
+  dungeonTarget: 'goblin_dungeon',
   dungeonDepth: 1,
   dungeonChoicePending: null,
+  endlessContractCleared: false,
   activeGuildFloor: 1,
   damageBoostMultiplier: 1,
   damageBoostSeconds: 0,
+  hotSpringSeconds: 0,
+  isNightTime: false,
+  nightFactor: 0,
+  secondsToNightToggle: 300,
   unlockedWardrobe: ['outfit_knight_plate', 'hat_helm'],
   crownUnlocked: false,
   gyroDefeated: false,
   isekaiPortalOpen: false,
   isekaiMission: null,
   coronationCutscene: null,
+  caravanRide: null,
+  arenaWins: 0,
+  arenaDuel: null,
   onlineAdventurers: [],
   pendingGuildInvites: [],
   inventory: createInitialInventory(),
@@ -118,6 +132,7 @@ function mergeSaveSummaries(
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const labelCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<BasteraGameEngine | null>(null);
 
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
@@ -132,6 +147,8 @@ export default function App() {
   const [showWardrobeModal, setShowWardrobeModal] = useState(false);
   const [showPotionShopModal, setShowPotionShopModal] = useState(false);
   const [showWeaponsShopModal, setShowWeaponsShopModal] = useState(false);
+  const [showCaravanModal, setShowCaravanModal] = useState(false);
+  const [showArenaModal, setShowArenaModal] = useState(false);
   const [saves, setSaves] = useState<BasteraSaveSummary[]>(() => listLocalSaves());
   const [savesLoading, setSavesLoading] = useState(false);
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
@@ -148,6 +165,8 @@ export default function App() {
     setShowWardrobeModal(false);
     setShowPotionShopModal(false);
     setShowWeaponsShopModal(false);
+    setShowCaravanModal(false);
+    setShowArenaModal(false);
   }, []);
 
   const refreshSaves = useCallback(async () => {
@@ -198,6 +217,7 @@ export default function App() {
         setHud(snapshot);
       },
       autostart ? 'playing' : 'title',
+      labelCanvasRef.current,
     );
 
     engineRef.current = engine;
@@ -218,6 +238,14 @@ export default function App() {
       onOpenWeaponsShop: () => {
         closeAllModals();
         setShowWeaponsShopModal(true);
+      },
+      onOpenCaravanRider: () => {
+        closeAllModals();
+        setShowCaravanModal(true);
+      },
+      onOpenDuelingArena: () => {
+        closeAllModals();
+        setShowArenaModal(true);
       },
     });
     if (autostart) {
@@ -365,6 +393,14 @@ export default function App() {
           setShowWeaponsShopModal(false);
           return;
         }
+        if (showCaravanModal) {
+          setShowCaravanModal(false);
+          return;
+        }
+        if (showArenaModal) {
+          setShowArenaModal(false);
+          return;
+        }
         if (hud.status === 'playing') {
           engineRef.current?.setStatus('paused');
         } else if (hud.status === 'paused') {
@@ -402,6 +438,8 @@ export default function App() {
     showWardrobeModal,
     showPotionShopModal,
     showWeaponsShopModal,
+    showCaravanModal,
+    showArenaModal,
     handleStartGame,
     closeAllModals,
   ]);
@@ -418,6 +456,8 @@ export default function App() {
         showWardrobeModal ||
         showPotionShopModal ||
         showWeaponsShopModal ||
+        showCaravanModal ||
+        showArenaModal ||
         Boolean(hud.dungeonChoicePending),
     );
   }, [
@@ -431,6 +471,8 @@ export default function App() {
     showWardrobeModal,
     showPotionShopModal,
     showWeaponsShopModal,
+    showCaravanModal,
+    showArenaModal,
     hud.dungeonChoicePending,
   ]);
 
@@ -450,12 +492,17 @@ export default function App() {
 
   return (
     <main className={shellClass} data-testid="bastera-shell">
-      {/* Isolated Pixel-Art Canvas Viewport */}
+      {/* Isolated Pixel-Art Canvas Viewport + High-Res Crisp Label Overlay Canvas */}
       <div className="absolute inset-0 flex items-center justify-center bg-[#090608]">
         <canvas
           ref={canvasRef}
           data-testid="game-canvas"
           className="pixel-canvas w-full h-full object-contain"
+        />
+        <canvas
+          ref={labelCanvasRef}
+          data-testid="label-canvas"
+          className="pointer-events-none absolute inset-0 w-full h-full object-contain"
         />
       </div>
 
@@ -536,8 +583,14 @@ export default function App() {
             closeAllModals();
             setShowWeaponsShopModal(true);
           }}
-          onEnterRoom={(room) => engineRef.current?.enterIsekaiRoom(room, 96)}
-          onReturnToCitadel={() => engineRef.current?.returnToCitadel()}
+          onOpenCaravanRider={() => {
+            closeAllModals();
+            setShowCaravanModal(true);
+          }}
+          onOpenDuelingArena={() => {
+            closeAllModals();
+            setShowArenaModal(true);
+          }}
           onAllocateStat={(key: StatKey) => engineRef.current?.allocatePlayerStat(key, 1)}
           onTogglePause={() => engineRef.current?.setStatus('paused')}
           onToggleMute={() => engineRef.current?.toggleMute()}
@@ -654,13 +707,33 @@ export default function App() {
           hud={hud}
           initialFloor={guildModalFloor}
           onClose={() => setShowGuildModal(false)}
-          onStartMission={(missionId, broadcastToParty) =>
-            engineRef.current?.startGuildMission(missionId, broadcastToParty)
-          }
+          onAcceptMission={(missionId) => engineRef.current?.acceptGuildMission(missionId)}
           onInviteAdventurer={(targetPeerId, missionId) =>
             engineRef.current?.sendGuildInvite(targetPeerId, missionId)
           }
-          onReturnToCitadel={() => engineRef.current?.returnToCitadel()}
+        />
+      )}
+
+      {/* Caravan Rider Vance Travel Modal */}
+      {showCaravanModal && hud.status === 'playing' && (
+        <CaravanRiderModal
+          hud={hud}
+          onClose={() => setShowCaravanModal(false)}
+          onRideDestination={(raw) =>
+            engineRef.current?.rideCaravanToDestination(raw) ?? {
+              ok: false,
+              message: 'Caravan unavailable.',
+            }
+          }
+        />
+      )}
+
+      {/* Solaris Grand Colosseum Jujutsu Kaisen Challengers Modal */}
+      {showArenaModal && hud.status === 'playing' && (
+        <DuelingArenaModal
+          hud={hud}
+          onClose={() => setShowArenaModal(false)}
+          onSelectChallenger={(id) => engineRef.current?.selectArenaChallenger(id)}
         />
       )}
 

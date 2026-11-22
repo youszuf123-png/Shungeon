@@ -47,6 +47,7 @@ export interface BasteraSaveData {
   crownUnlocked?: boolean;
   gyroDefeated?: boolean;
   isekaiCompleted?: boolean;
+  townRaidTimer?: number;
 }
 
 export function canPlayerEngageBoss(role: WorldRole): boolean {
@@ -78,6 +79,7 @@ export function createSavePayload(params: {
   crownUnlocked?: boolean;
   gyroDefeated?: boolean;
   isekaiCompleted?: boolean;
+  townRaidTimer?: number;
 }): BasteraSaveData {
   const cleanId = params.saveId.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'default_slot';
   return {
@@ -119,6 +121,7 @@ export function createSavePayload(params: {
     crownUnlocked: Boolean(params.crownUnlocked),
     gyroDefeated: Boolean(params.gyroDefeated),
     isekaiCompleted: Boolean(params.isekaiCompleted),
+    townRaidTimer: params.townRaidTimer ?? 1200,
   };
 }
 
@@ -315,6 +318,7 @@ export function normalizeLoadedSave(raw: unknown): BasteraSaveData | null {
     crownUnlocked: Boolean(obj.crownUnlocked),
     gyroDefeated: Boolean(obj.gyroDefeated),
     isekaiCompleted: Boolean(obj.isekaiCompleted),
+    townRaidTimer: Number.isFinite(obj.townRaidTimer) ? Math.max(10, Number(obj.townRaidTimer)) : 1200,
   };
 }
 

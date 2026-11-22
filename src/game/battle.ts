@@ -461,8 +461,11 @@ export function triggerBossCounterTurn(
     const skills = battle.boss.def.megaSkills;
     const skill = skills[(battle.turnCount - 1) % skills.length];
     const effectiveFloor = Math.max(1, battle.boss.def.index % 100);
+    const defeatedMult = battle.boss.def.defeatedScale ?? 1;
     const rawDamage = Math.round(
-      (18 + Math.floor(effectiveFloor * 0.55) + (battle.turnCount % 2) * 3) * skill.damageMult,
+      (18 + Math.floor(effectiveFloor * 0.55) + (battle.turnCount % 2) * 3) *
+        skill.damageMult *
+        defeatedMult,
     );
     const speedReduction = Math.min(0.25, player.stats.speed * 0.015);
     let finalDamage = Math.max(4, Math.round(rawDamage * (1 - speedReduction)));

@@ -8,6 +8,7 @@ import {
   getBakedWarriorBattleSprite,
   shadeColor,
 } from './pixelArtAtlas';
+import { drawCrispOverlayLabel } from './isekaiSprites';
 import { DEFAULT_WARRIOR_CUSTOMIZATION } from './rules';
 import type {
   ActiveBoss,
@@ -309,7 +310,7 @@ export function drawInteractables(
 
   for (const p of props) {
     const sx = Math.round(p.x - camX);
-    if (sx < -40 || sx > PIXEL_W + 40) continue;
+    if (sx + p.w < -40 || sx > PIXEL_W + 40) continue;
 
     if (p.kind === 'throne') {
       pRect(ctx, sx - 2, p.y + 30, 32, 4, '#451a03');
@@ -490,6 +491,39 @@ export function drawInteractables(
       pRect(ctx, sx - 2, p.y + 4, p.w + 4, 4, '#f59e0b');
       pRect(ctx, sx + 12, p.y - 6, 20, 10, '#334155');
       pRect(ctx, sx + 44, p.y - 3, 18, 7, '#fb923c');
+    } else if (p.kind === 'dungeon_exit_rope') {
+      // Hanging Escape Rope + Lantern
+      pRect(ctx, sx + 14, p.y, 4, p.h - 10, '#d97706');
+      pRect(ctx, sx + 12, p.y + p.h - 14, 8, 8, '#b45309');
+      pRect(ctx, sx + 22, p.y + 8, 8, 10, '#fef08a');
+    } else if (p.kind === 'dungeon_descend_gate') {
+      // Glowing Abyssal Descent Stair-Gate
+      pRect(ctx, sx, p.y, p.w, p.h, '#1e1b4b');
+      pRect(ctx, sx + 4, p.y + 4, p.w - 8, p.h - 4, '#312e81');
+      pRect(ctx, sx + 10, p.y + 12, p.w - 20, p.h - 12, '#09060b');
+      pRect(ctx, sx + 14, p.y + 18, p.w - 28, 6, '#a855f7');
+    } else if (p.kind === 'citadel_portal') {
+      const pulse = Math.sin(time * 5) * 2;
+      ctx.save();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(sx + p.w / 2, p.y + p.h / 2, p.w / 2 + pulse, p.h / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      pRect(ctx, sx + p.w / 2 - 4, p.y + p.h / 2 - 8, 8, 16, '#7dd3fc');
+      ctx.restore();
+    } else if (p.kind === 'arena_door') {
+      pRect(ctx, sx, p.y, p.w, p.h, '#7f1d1d');
+      pRect(ctx, sx + 6, p.y + 6, p.w - 12, p.h - 6, '#09060b');
+      pRect(ctx, sx + 10, p.y + 10, p.w - 20, 4, '#fbbf24');
+    } else if (p.kind === 'arena_board') {
+      // Grand Arena Challenger Selection Pedestal
+      pRect(ctx, sx + 4, p.y + 20, p.w - 8, p.h - 20, '#44403c');
+      pRect(ctx, sx, p.y, p.w, 26, '#7f1d1d');
+      pRect(ctx, sx + 3, p.y + 3, p.w - 6, 20, '#fef3c7');
+      pRect(ctx, sx + 8, p.y + 7, p.w - 16, 3, '#b91c1c');
+      pRect(ctx, sx + 8, p.y + 13, p.w - 20, 3, '#1e293b');
+      pRect(ctx, sx + 8, p.y + 18, p.w - 14, 2, '#d97706');
     }
   }
 
@@ -529,6 +563,7 @@ export function drawWarrior(
   comboSubStep = 0,
   isSpinDashAttack = false,
   simTime = 0,
+  labelCtx?: CanvasRenderingContext2D | null,
 ) {
   const sx = Math.round(x - camX);
   const sy = Math.round(y);
@@ -840,10 +875,21 @@ export function drawWarrior(
   }
 
   if (isPeer && peerName) {
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = '7px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(peerName, sx + 8, sy - 7);
+    if (labelCtx) {
+      drawCrispOverlayLabel(labelCtx, sx + 8, sy - 11, peerName, {
+        color: '#e0f2fe',
+        bg: 'rgba(15, 23, 42, 0.88)',
+        border: peerColor,
+        fontSize: 18,
+        padX: 8,
+        padY: 3,
+      });
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(peerName, sx + 8, sy - 7);
+    }
   }
 }
 
@@ -853,13 +899,15 @@ export function drawEnemy(
   camX: number,
   time: number,
   frozen: boolean,
+  labelCtx?: CanvasRenderingContext2D | null,
 ) {
   const sx = Math.round(enemy.x - camX);
   const sy = Math.round(enemy.y);
-  if (sx < -40 || sx > PIXEL_W + 40) return;
+  if (sx + enemy.w < -60 || sx > PIXEL_W + 60) return;
 
   const isBoss = Boolean(enemy.isDungeonBoss);
-  const scaleFactor = isBoss ? 1.4 : 1;
+  const scaleFactor = enemy.sizeScale ?? (isBoss ? 1.4 : 1);
+  const darkness = Math.max(0, Math.min(0.85, enemy.darkness ?? 0));
 
   // Ground contact shadow & Dungeon Boss pulsing halo
   ctx.save();
@@ -1048,6 +1096,50 @@ export function drawEnemy(
     // Curved oak longbow
     pRect(ctx, 6, -24 + idleBob, 2, 16, '#92400e');
     pRect(ctx, 5, -22 + idleBob, 1, 12, '#e2e8f0');
+  } else if (enemy.archetype === 'bandit_assassin') {
+    const cloak = flash ? '#ffffff' : windupPulse ? '#facc15' : '#18181b';
+    pRect(ctx, -6, -25 + idleBob, 12, 18, '#09060b');
+    pRect(ctx, -5, -25 + idleBob, 10, 8, cloak); // Dark stealth cowl
+    pRect(ctx, -5, -21 + idleBob, 10, 3, '#be123c'); // Crimson face mask
+    pRect(ctx, 1, -23 + idleBob, 3, 2, '#facc15'); // Fierce assassin eye glint
+    pRect(ctx, -5, -17 + idleBob, 10, 10, '#27272a');
+    pRect(ctx, -4 + stride, -7, 3, 7, '#09090b');
+    pRect(ctx, 2 - stride, -7, 3, 7, '#09090b');
+    // Dual poisoned curved daggers
+    pRect(ctx, 5, -16 + idleBob, 9, 2, '#a3e635');
+    pRect(ctx, -11, -15 + idleBob, 7, 2, '#94a3b8');
+  } else if (enemy.archetype === 'bandit_pyromancer') {
+    const robe = flash ? '#ffffff' : windupPulse ? '#fef08a' : '#7f1d1d';
+    pRect(ctx, -6, -27 + idleBob, 12, 20, '#09060b');
+    pRect(ctx, -5, -27 + idleBob, 10, 8, '#991b1b'); // Pointed crimson cowl
+    pRect(ctx, 0, -24 + idleBob, 4, 4, '#09090b');
+    pRect(ctx, 2, -23 + idleBob, 2, 2, '#fb923c'); // Ember eyes
+    pRect(ctx, -5, -19 + idleBob, 10, 12, robe);
+    pRect(ctx, -5, -19 + idleBob, 2, 12, '#fbbf24'); // Gold mage sash
+    pRect(ctx, -4 + stride, -7, 3, 7, '#450a0a');
+    pRect(ctx, 2 - stride, -7, 3, 7, '#450a0a');
+    // Blazing Warlock Fire-Staff
+    pRect(ctx, 6, -28 + idleBob, 2, 22, '#78350f');
+    const fl = Math.round(Math.sin(time * 16) * 2);
+    pRect(ctx, 4, -33 + idleBob + fl, 6, 6, '#f97316');
+    pRect(ctx, 5, -31 + idleBob + fl, 4, 4, '#fef08a');
+  } else if (enemy.archetype === 'bandit_brute') {
+    const armor = flash ? '#ffffff' : windupPulse ? '#f87171' : '#57534e';
+    pRect(ctx, -11, -33 + idleBob, 22, 25, '#09060b');
+    pRect(ctx, -10, -25 + idleBob, 20, 17, armor);
+    pRect(ctx, -6, -33 + idleBob, 12, 8, '#44403c'); // Heavy iron pot-helm
+    pRect(ctx, -8, -35 + idleBob, 3, 4, '#cbd5e1');
+    pRect(ctx, 5, -35 + idleBob, 3, 4, '#cbd5e1');
+    pRect(ctx, -2, -29 + idleBob, 6, 2, '#ef4444'); // Visor glare
+    pRect(ctx, -9, -25 + idleBob, 6, 4, '#991b1b'); // Spiked crimson pauldron
+    pRect(ctx, 3, -25 + idleBob, 6, 4, '#991b1b');
+    pRect(ctx, -8 + stride, -8, 6, 8, '#292524');
+    pRect(ctx, 2 - stride, -8, 6, 8, '#292524');
+    // Heavy Tower Shield & War Axe
+    pRect(ctx, 7, -26 + idleBob, 8, 16, '#475569');
+    pRect(ctx, 9, -24 + idleBob, 4, 12, '#cbd5e1');
+    pRect(ctx, -12, -29 + idleBob, 3, 18, '#78350f');
+    pRect(ctx, -16, -29 + idleBob, 6, 7, '#e2e8f0');
   } else if (enemy.archetype === 'demon_succubus') {
     const hover = Math.round(Math.sin(time * 5 + enemy.patrolOriginX) * 3);
     const body = flash ? '#ffffff' : windupPulse ? '#f472b6' : '#be123c';
@@ -1136,6 +1228,26 @@ export function drawEnemy(
     pRect(ctx, 4, -14 + ((drip + 3) % 6), 3, 3, '#a3e635');
   }
 
+  // Endless Dungeon distance-darkening abyssal shroud & Demon King Stage bespoke variant aura!
+  if (darkness > 0.08 && enemy.state !== 'ko') {
+    ctx.fillStyle = `rgba(4, 2, 10, ${(darkness * 0.62).toFixed(2)})`;
+    ctx.fillRect(-13, -38, 26, 38);
+    if (darkness >= 0.35) {
+      pRect(ctx, 1, -24 + idleBob, 2, 2, '#f43f5e');
+    }
+  }
+  if (enemy.variantStyle && enemy.state !== 'ko') {
+    const vCol =
+      enemy.variantStyle === 'crimson_ash'
+        ? '#f97316'
+        : enemy.variantStyle === 'frost_seraph'
+          ? '#38bdf8'
+          : '#c084fc';
+    ctx.strokeStyle = vCol;
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(-12, -34 + idleBob, 24, 34);
+  }
+
   if (frozen) {
     ctx.strokeStyle = '#34d399';
     ctx.strokeRect(-10, -30, 20, 30);
@@ -1145,12 +1257,23 @@ export function drawEnemy(
   if (isBoss && enemy.state !== 'ko') {
     const barW = Math.max(46, enemy.w + 22);
     const bx = Math.round(sx + enemy.w / 2 - barW / 2);
-    ctx.font = 'bold 6px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(15, 6, 12, 0.85)';
-    ctx.fillRect(bx - 6, sy - 20, barW + 12, 9);
-    ctx.fillStyle = '#fde047';
-    ctx.fillText(`★ ${enemy.name}`, sx + enemy.w / 2, sy - 13);
+    if (labelCtx) {
+      drawCrispOverlayLabel(labelCtx, sx + enemy.w / 2, sy - 18, `★ ${enemy.name}`, {
+        color: '#fde047',
+        bg: 'rgba(15, 6, 12, 0.90)',
+        border: '#f43f5e',
+        fontSize: 19,
+        padX: 10,
+        padY: 4,
+      });
+    } else {
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(15, 6, 12, 0.85)';
+      ctx.fillRect(bx - 6, sy - 20, barW + 12, 9);
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(`★ ${enemy.name}`, sx + enemy.w / 2, sy - 13);
+    }
     pRect(ctx, bx, sy - 9, barW, 4, '#09060b');
     pRect(ctx, bx + 1, sy - 8, Math.round(((barW - 2) * enemy.hp) / Math.max(1, enemy.maxHp)), 2, '#f43f5e');
   } else if (enemy.hp < enemy.maxHp && enemy.state !== 'ko') {
@@ -1188,6 +1311,86 @@ export function drawJoJoBoss(
   ctx.imageSmoothingEnabled = false;
   if (boss.hitFlash > 0) {
     ctx.globalAlpha = 0.72;
+  }
+
+  // Colorful glowing prismatic flames erupting from behind the boss's back!
+  if (poseKey !== 'ko') {
+    const flameColors = [
+      '#f43f5e',
+      '#fb923c',
+      '#fde047',
+      '#34d399',
+      '#38bdf8',
+      '#a855f7',
+      '#e879f9',
+      def.auraColor,
+    ];
+    const backDir = isBattle ? 1 : boss.facing === 1 ? -1 : 1;
+    const anchorX = isBattle ? sx + 32 : Math.round(sx + boss.w / 2 + backDir * (def.isGyroBoss ? 14 : 9));
+    const anchorY = isBattle ? sy - 10 + floatBob : Math.round(sy + boss.h - 22 + floatBob);
+    const scale = isBattle ? 1.65 : def.isGyroBoss ? 1.35 : 1;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // Soft prismatic radial aura behind the boss's back
+    const aura = ctx.createRadialGradient(
+      anchorX,
+      anchorY - 6 * scale,
+      2,
+      anchorX,
+      anchorY - 12 * scale,
+      30 * scale,
+    );
+    aura.addColorStop(0, 'rgba(253, 224, 71, 0.42)');
+    aura.addColorStop(0.42, 'rgba(232, 121, 249, 0.28)');
+    aura.addColorStop(0.76, 'rgba(56, 189, 248, 0.16)');
+    aura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(anchorX, anchorY - 10 * scale, 30 * scale, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Animated billowing colorful flame tongues shooting out behind the back
+    const count = isBattle ? 11 : 8;
+    for (let f = 0; f < count; f++) {
+      const col = flameColors[f % flameColors.length];
+      const phase = time * (9 + (f % 3) * 2.2) + f * 1.15;
+      const spread = (f - (count - 1) / 2) * 3.8 * scale;
+      const height = (15 + Math.sin(phase) * 5 + (f % 3) * 4) * scale;
+      const driftX = backDir * (5 + Math.cos(phase * 0.9) * 3.5) * scale + spread * 0.35;
+      const fx = Math.round(anchorX + spread * 0.55 + Math.sin(phase * 0.7) * 2.2 * scale);
+      const fy = Math.round(anchorY + Math.abs(spread) * 0.25);
+
+      ctx.globalAlpha = boss.hitFlash > 0 ? 0.5 : 0.72;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(fx - 3.6 * scale, fy);
+      ctx.quadraticCurveTo(
+        fx + driftX * 0.45,
+        fy - height * 0.62,
+        fx + driftX,
+        fy - height,
+      );
+      ctx.quadraticCurveTo(
+        fx + driftX * 0.7 + 3.2 * scale,
+        fy - height * 0.48,
+        fx + 3.6 * scale,
+        fy,
+      );
+      ctx.closePath();
+      ctx.fill();
+
+      // Hot luminous core inside each colorful back flame
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = f % 2 === 0 ? '#fef08a' : '#e0f2fe';
+      ctx.fillRect(
+        Math.round(fx + driftX * 0.32 - 1),
+        Math.round(fy - height * 0.45),
+        Math.max(2, Math.round(2 * scale)),
+        Math.max(2, Math.round(3 * scale)),
+      );
+    }
+    ctx.restore();
   }
 
   if (isBattle) {
@@ -1236,10 +1439,11 @@ export function drawProjectiles(
   projectiles: Projectile[],
   camX: number,
 ) {
+  const nowSec = Date.now() * 0.006;
   for (const pr of projectiles) {
     const sx = Math.round(pr.x - camX);
     const sy = Math.round(pr.y);
-    if (sx < -20 || sx > PIXEL_W + 20) continue;
+    if (sx < -40 || sx > PIXEL_W + 40) continue;
 
     if (pr.kind === 'knife') {
       pRect(ctx, sx - 6, sy - 1, 12, 2, '#e2e8f0');
@@ -1250,7 +1454,6 @@ export function drawProjectiles(
       pRect(ctx, sx + dir * 5, sy - 2, 3, 4, '#e2e8f0');
       pRect(ctx, sx - dir * 7, sy - 2, 3, 4, '#ef4444');
     } else if (pr.kind === 'gyro_ball') {
-      // Spinning green Steel Ball wreathed in blazing emerald flames!
       const spin = (Date.now() * 0.025) % (Math.PI * 2);
       ctx.save();
       ctx.fillStyle = 'rgba(34, 197, 94, 0.35)';
@@ -1265,31 +1468,194 @@ export function drawProjectiles(
       pRect(ctx, sx - 4, sy - 4, 8, 8, '#f43f5e');
       pRect(ctx, sx - 2, sy - 2, 4, 4, '#fbcfe8');
     } else if (pr.kind === 'purple_flame' || pr.kind === 'purple_meteor') {
-      const r = pr.kind === 'purple_meteor' ? 9 : 6;
+      const r = pr.kind === 'purple_meteor' ? 12 : Math.max(9, pr.radius);
       ctx.save();
-      ctx.fillStyle = 'rgba(168, 85, 247, 0.35)';
+      const grad = ctx.createRadialGradient(sx, sy, 2, sx, sy, r + 9);
+      grad.addColorStop(0, '#fdf4ff');
+      grad.addColorStop(0.35, pr.color || '#c084fc');
+      grad.addColorStop(0.75, 'rgba(126, 34, 206, 0.55)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(sx, sy, r + 4, 0, Math.PI * 2);
+      ctx.arc(sx, sy, r + 9, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#9333ea';
+      ctx.strokeStyle = '#f0abfc';
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.arc(sx, sy, r + 2, nowSec, nowSec + Math.PI * 1.3);
+      ctx.stroke();
+      ctx.restore();
+    } else if (pr.kind === 'slash_wave' || pr.kind === 'jjk_split_slash') {
+      const dir = pr.vx >= 0 ? 1 : -1;
+      ctx.save();
+      const g = ctx.createLinearGradient(sx - dir * 16, sy - 16, sx + dir * 12, sy + 16);
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(0.55, pr.color);
+      g.addColorStop(1, '#ffffff');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 4.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(sx - dir * 6, sy, Math.max(12, pr.radius + 4), dir === 1 ? -1.1 : Math.PI - 1.1, dir === 1 ? 1.1 : Math.PI + 1.1);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(sx - dir * 5, sy, Math.max(11, pr.radius + 3), dir === 1 ? -0.9 : Math.PI - 0.9, dir === 1 ? 0.9 : Math.PI + 0.9);
+      ctx.stroke();
+      ctx.restore();
+    } else if (pr.kind === 'jjk_black_flash_orb') {
+      ctx.save();
+      const grad = ctx.createRadialGradient(sx, sy, 2, sx, sy, pr.radius + 8);
+      grad.addColorStop(0, '#09090b');
+      grad.addColorStop(0.42, '#ef4444');
+      grad.addColorStop(0.75, 'rgba(244, 63, 94, 0.45)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, pr.radius + 8, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#f0abfc';
+      ctx.strokeStyle = '#fb7185';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {
+        const a = nowSec * 1.4 + i * (Math.PI / 2);
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(a) * 5, sy + Math.sin(a) * 5);
+        ctx.lineTo(sx + Math.cos(a + 0.35) * (pr.radius + 7), sy + Math.sin(a + 0.35) * (pr.radius + 7));
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (pr.kind === 'jjk_uzumaki') {
+      ctx.save();
+      const grad = ctx.createRadialGradient(sx, sy, 2, sx, sy, pr.radius + 10);
+      grad.addColorStop(0, '#09020f');
+      grad.addColorStop(0.45, '#7e22ce');
+      grad.addColorStop(0.78, '#e879f9');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(sx, sy, r * 0.5, 0, Math.PI * 2);
+      ctx.arc(sx, sy, pr.radius + 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#f5d0fe';
+      ctx.lineWidth = 1.6;
+      for (let r = 5; r <= pr.radius + 4; r += 4) {
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, nowSec + r, nowSec + r + Math.PI * 1.3);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (pr.kind === 'jjk_pachinko_ball') {
+      ctx.save();
+      const rainbow = ['#22c55e', '#fde047', '#ec4899', '#38bdf8'][Math.floor(nowSec * 3) % 4];
+      const grad = ctx.createRadialGradient(sx, sy, 1, sx, sy, pr.radius + 6);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.45, rainbow);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, pr.radius + 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-    } else if (pr.kind === 'slash_wave') {
-      pRect(ctx, sx - 5, sy - 11, 10, 22, pr.color);
-      pRect(ctx, sx - 2, sy - 9, 4, 18, '#ffffff');
-    } else {
-      ctx.fillStyle = pr.color;
+    } else if (pr.kind === 'jjk_lightning_bolt') {
+      ctx.save();
+      const dir = pr.vx >= 0 ? 1 : -1;
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.arc(sx, sy, pr.radius, 0, Math.PI * 2);
+      ctx.moveTo(sx - dir * 16, sy - 4);
+      ctx.lineTo(sx - dir * 5, sy + 5);
+      ctx.lineTo(sx + dir * 4, sy - 5);
+      ctx.lineTo(sx + dir * 16, sy + 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.restore();
+    } else if (pr.kind === 'jjk_transfig_orb') {
+      ctx.save();
+      const grad = ctx.createRadialGradient(sx, sy, 2, sx, sy, pr.radius + 7);
+      grad.addColorStop(0, '#f0fdfa');
+      grad.addColorStop(0.45, '#2dd4bf');
+      grad.addColorStop(0.8, '#a855f7');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, pr.radius + 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#09090b';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(sx - 6, sy - 3);
+      ctx.lineTo(sx + 6, sy + 3);
+      ctx.stroke();
+      ctx.restore();
+    } else if (pr.kind === 'jjk_magma_meteor') {
+      ctx.save();
+      const grad = ctx.createRadialGradient(sx, sy, 2, sx, sy, pr.radius + 8);
+      grad.addColorStop(0, '#fef08a');
+      grad.addColorStop(0.45, '#f97316');
+      grad.addColorStop(0.82, '#dc2626');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, pr.radius + 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else if (pr.kind === 'jjk_piercing_blood') {
+      const dir = pr.vx >= 0 ? 1 : -1;
+      ctx.save();
+      const g = ctx.createLinearGradient(sx - dir * 24, sy, sx + dir * 24, sy);
+      g.addColorStop(0, 'rgba(190, 18, 60, 0)');
+      g.addColorStop(0.4, '#e11d48');
+      g.addColorStop(0.85, '#fb7185');
+      g.addColorStop(1, '#ffffff');
+      ctx.fillStyle = g;
+      ctx.fillRect(sx - 24, sy - 4, 48, 8);
+      ctx.fillStyle = '#fff1f2';
+      ctx.fillRect(sx - 18, sy - 1.5, 36, 3);
+      ctx.restore();
+    } else if (pr.kind === 'jjk_exec_blade') {
+      const dir = pr.vx >= 0 ? 1 : -1;
+      ctx.save();
+      ctx.shadowColor = '#fde047';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#fde047';
+      ctx.beginPath();
+      ctx.moveTo(sx - dir * 16, sy - 4);
+      ctx.lineTo(sx + dir * 18, sy);
+      ctx.lineTo(sx - dir * 16, sy + 4);
+      ctx.closePath();
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(sx - 1, sy - 1, 2, 2);
+      ctx.fillRect(sx - 8, sy - 1, 16, 2);
+      ctx.restore();
+    } else if (pr.kind === 'jjk_cursed_nail') {
+      const dir = pr.vx >= 0 ? 1 : -1;
+      ctx.save();
+      const grad = ctx.createRadialGradient(sx, sy, 1, sx, sy, pr.radius + 6);
+      grad.addColorStop(0, '#fbcfe8');
+      grad.addColorStop(0.5, '#f43f5e');
+      grad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, pr.radius + 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(sx - 10, sy - 1.5, 20, 3);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(sx + dir * 7, sy - 1, 4, 2);
+      ctx.restore();
+    } else {
+      ctx.save();
+      const grad = ctx.createRadialGradient(sx, sy, 1, sx, sy, pr.radius + 5);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.5, pr.color);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, pr.radius + 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 }
@@ -1299,6 +1665,7 @@ export function drawPeer(
   peer: MultiplayerPeer,
   camX: number,
   time: number,
+  labelCtx?: CanvasRenderingContext2D | null,
 ) {
   drawWarrior(
     ctx,
@@ -1319,6 +1686,10 @@ export function drawPeer(
     peer.color,
     peer.name,
     peer.customization,
+    0,
+    false,
+    time,
+    labelCtx,
   );
 }
 

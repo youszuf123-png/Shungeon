@@ -84,7 +84,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialLabel: 'Gale Crescent Wave',
     unlockedByDefault: false,
     craftCost: { resourceId: 'royal_ember', amount: 3 },
-    shopPrice: 120,
+    shopPrice: 480,
   },
   runeblade: {
     id: 'runeblade',
@@ -108,7 +108,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialLabel: 'Seismic Shockwave',
     unlockedByDefault: false,
     craftCost: { resourceId: 'ruin_shard', amount: 4 },
-    shopPrice: 185,
+    shopPrice: 740,
   },
   katana: {
     id: 'katana',
@@ -132,7 +132,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialLabel: 'Void Rift Pull',
     unlockedByDefault: false,
     craftCost: { resourceId: 'magma_core', amount: 3 },
-    shopPrice: 175,
+    shopPrice: 700,
   },
   fire_sword: {
     id: 'fire_sword',
@@ -156,7 +156,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialEffect: 'burn',
     specialLabel: '2x Inferno + Scorch Burn',
     unlockedByDefault: false,
-    shopPrice: 420,
+    shopPrice: 1680,
   },
   venom_twinblade: {
     id: 'venom_twinblade',
@@ -179,7 +179,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialEffect: 'venom',
     specialLabel: 'Toxic Venom DoT',
     unlockedByDefault: false,
-    shopPrice: 75,
+    shopPrice: 300,
   },
   azure_glaive: {
     id: 'azure_glaive',
@@ -202,7 +202,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialEffect: 'frost',
     specialLabel: 'Frost Chill Slow',
     unlockedByDefault: false,
-    shopPrice: 130,
+    shopPrice: 520,
   },
   emerald_zephyr: {
     id: 'emerald_zephyr',
@@ -225,7 +225,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialEffect: 'wind_wave',
     specialLabel: 'Gale Wind Projectile',
     unlockedByDefault: false,
-    shopPrice: 160,
+    shopPrice: 640,
   },
   crimson_reaper: {
     id: 'crimson_reaper',
@@ -248,7 +248,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialEffect: 'lifesteal',
     specialLabel: '15% Blood Lifesteal',
     unlockedByDefault: false,
-    shopPrice: 215,
+    shopPrice: 860,
   },
   thunder_odachi: {
     id: 'thunder_odachi',
@@ -271,7 +271,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialEffect: 'lightning',
     specialLabel: 'Chain Lightning Arc',
     unlockedByDefault: false,
-    shopPrice: 280,
+    shopPrice: 1120,
   },
   solar_excalibur: {
     id: 'solar_excalibur',
@@ -295,7 +295,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     specialEffect: 'holy_beam',
     specialLabel: 'Sacred Sunbeam +35% Power',
     unlockedByDefault: false,
-    shopPrice: 360,
+    shopPrice: 1440,
   },
 };
 
@@ -372,7 +372,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     count: 3,
     color: '#ef4444',
     healAmount: 45,
-    shopPrice: 25,
+    shopPrice: 100,
   },
   {
     id: 'hi_ruby_potion',
@@ -383,7 +383,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     count: 0,
     color: '#f43f5e',
     healAmount: 120,
-    shopPrice: 55,
+    shopPrice: 220,
   },
   {
     id: 'royal_elixir_hp',
@@ -394,7 +394,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     count: 0,
     color: '#10b981',
     healAmount: 260,
-    shopPrice: 110,
+    shopPrice: 440,
   },
   {
     id: 'fury_draught',
@@ -406,7 +406,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     color: '#a855f7',
     attackBoostMult: 1.35,
     boostDuration: 30,
-    shopPrice: 65,
+    shopPrice: 260,
   },
   {
     id: 'titan_crimson_tonic',
@@ -418,7 +418,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     color: '#06b6d4',
     attackBoostMult: 1.6,
     boostDuration: 45,
-    shopPrice: 125,
+    shopPrice: 500,
   },
   {
     id: 'royal_ember',
@@ -759,7 +759,13 @@ function hslHex(h: number, s: number, l: number): string {
   return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
 }
 
-export function getBossDef(bossIndex: number): BossDef {
+export const BOSS_DEFEATED_SCALING_BASE = 1.8;
+
+export function getBossDefeatedMultiplier(bossesDefeated: number): number {
+  return Number(Math.pow(BOSS_DEFEATED_SCALING_BASE, Math.max(0, bossesDefeated)).toFixed(4));
+}
+
+export function getBossDef(bossIndex: number, bossesDefeated = 0): BossDef {
   const safeIndex = Math.max(1, bossIndex);
   const zero = safeIndex - 1;
   const biome = getBiomeForBossIndex((zero % TOTAL_BOSSES) + 1);
@@ -820,6 +826,8 @@ export function getBossDef(bossIndex: number): BossDef {
   const epithet = bossTitles[(zero + Math.floor(zero / 4)) % bossTitles.length];
 
   const diffMult = getBossDifficultyMultiplier(safeIndex);
+  const defeatedScale = getBossDefeatedMultiplier(bossesDefeated);
+  const baseMaxHp = Math.round((115 + zero * 14) * diffMult);
 
   return {
     index: safeIndex,
@@ -832,8 +840,10 @@ export function getBossDef(bossIndex: number): BossDef {
     climateSkyTop: hslHex(hue, 45, 7),
     climateSkyBottom: hslHex(hue + 18, 52, 18),
     climateParticleColor: climateBase.particle,
-    maxHp: Math.round((115 + zero * 14) * diffMult),
-    difficultyMultiplier: diffMult,
+    maxHp: Math.round(baseMaxHp * defeatedScale),
+    baseMaxHp,
+    difficultyMultiplier: Number((diffMult * defeatedScale).toFixed(4)),
+    defeatedScale,
     primaryColor,
     secondaryColor,
     auraColor,
@@ -869,9 +879,12 @@ export const GYRO_EMOTES = [
 export function createGyroZeppeliBossDef(
   playerMaxHp: number,
   playerAttack: number,
+  bossesDefeated = 0,
 ): BossDef {
-  const targetHp = Math.max(300, Math.round(playerMaxHp * 3));
-  const exactAtk = Math.max(1, Math.round(playerAttack));
+  const defeatedScale = getBossDefeatedMultiplier(bossesDefeated);
+  const baseMaxHp = Math.max(300, Math.round(playerMaxHp * 3));
+  const targetHp = Math.round(baseMaxHp * defeatedScale);
+  const exactAtk = Math.max(1, Math.round(playerAttack * defeatedScale));
   return {
     index: 101,
     name: 'Gyro Zeppeli',
@@ -884,7 +897,9 @@ export function createGyroZeppeliBossDef(
     climateSkyBottom: '#0b3d28',
     climateParticleColor: '#4ade80',
     maxHp: targetHp,
-    difficultyMultiplier: getBossDifficultyMultiplier(101),
+    baseMaxHp,
+    difficultyMultiplier: Number((getBossDifficultyMultiplier(101) * defeatedScale).toFixed(4)),
+    defeatedScale,
     primaryColor: '#4c1d95',
     secondaryColor: '#22c55e',
     auraColor: '#4ade80',

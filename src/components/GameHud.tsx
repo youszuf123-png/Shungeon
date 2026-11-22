@@ -21,15 +21,8 @@ interface GameHudProps {
   onOpenWardrobe: () => void;
   onOpenPotionShop: () => void;
   onOpenWeaponsShop: () => void;
-  onEnterRoom: (
-    room:
-      | 'isekai_town'
-      | 'isekai_guild'
-      | 'isekai_wardrobe'
-      | 'isekai_potion_shop'
-      | 'isekai_weapons_shop',
-  ) => void;
-  onReturnToCitadel: () => void;
+  onOpenCaravanRider: () => void;
+  onOpenDuelingArena: () => void;
   onAllocateStat: (statKey: StatKey) => void;
   onTogglePause: () => void;
   onToggleMute: () => void;
@@ -45,6 +38,16 @@ interface GameHudProps {
   ) => void;
 }
 
+const TOWN_LANDMARKS = [
+  { id: 'guild', label: 'Guild', x: 342 },
+  { id: 'caravan', label: 'Caravan', x: 482 },
+  { id: 'potion', label: 'Potions', x: 648 },
+  { id: 'wardrobe', label: 'Wardrobe', x: 905 },
+  { id: 'weapons', label: 'Armory', x: 1185 },
+  { id: 'onsen', label: 'Hot Spring', x: 2630 },
+  { id: 'colosseum', label: 'Colosseum', x: 3285 },
+] as const;
+
 export const GameHud: React.FC<GameHudProps> = ({
   hud,
   isTouchLayout,
@@ -58,8 +61,8 @@ export const GameHud: React.FC<GameHudProps> = ({
   onOpenWardrobe,
   onOpenPotionShop,
   onOpenWeaponsShop,
-  onEnterRoom,
-  onReturnToCitadel,
+  onOpenCaravanRider,
+  onOpenDuelingArena,
   onAllocateStat,
   onTogglePause,
   onToggleMute,
@@ -79,12 +82,9 @@ export const GameHud: React.FC<GameHudProps> = ({
     ? (hud.dialogue.lines[hud.dialogue.lineIndex] || '').slice(0, hud.dialogue.charIndex)
     : '';
 
-  const inIsekaiHub =
-    hud.realm === 'isekai_town' ||
-    hud.realm === 'isekai_guild' ||
-    hud.realm === 'isekai_wardrobe' ||
-    hud.realm === 'isekai_potion_shop' ||
-    hud.realm === 'isekai_weapons_shop';
+  const playerApproxX = hud.distanceMeters * 16 + 68;
+  const nearVanceInTown = hud.realm === 'isekai_town' && Math.abs(playerApproxX - 482) <= 125;
+  const nearCaravanExterior = hud.realm === 'dungeon_exterior' && Math.abs(playerApproxX - 110) <= 135;
 
   return (
     <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-3 sm:p-4">
@@ -129,14 +129,13 @@ export const GameHud: React.FC<GameHudProps> = ({
               ) : (
                 <>
                   <span className="text-yellow-300 font-bold">
-                    {hud.guildRank}-Rank{hud.crownUnlocked ? ' ♛ Royalty' : ''}
+                    {hud.guildRank}-Rank ({hud.rankMissionsCompleted}/{hud.missionsRequiredPerRank})
+                    {hud.crownUnlocked ? ' ♛' : ''}
                   </span>
-                  {hud.isekaiPortalOpen && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span className="text-sky-300">Isekai Gate Open</span>
-                    </>
-                  )}
+                  <span aria-hidden="true">·</span>
+                  <span className={hud.isNightTime ? 'text-indigo-300' : 'text-amber-300'}>
+                    {hud.isNightTime ? '🌙 Night' : '☀ Day'} ({hud.secondsToNightToggle}s)
+                  </span>
                 </>
               )}
             </div>
@@ -145,8 +144,17 @@ export const GameHud: React.FC<GameHudProps> = ({
                 data-testid="damage-boost-hud"
                 className="mt-1 px-1.5 py-0.5 bg-[#2a0f3b] border border-fuchsia-400/75 font-pixel-mono text-[9px] font-bold text-fuchsia-200 flex items-center justify-between"
               >
-                <span>⚡ +{Math.round((hud.damageBoostMultiplier - 1) * 100)}% ATK POTION</span>
+                <span>⚡ +{Math.round((hud.damageBoostMultiplier - 1) * 100)}% ATK BOOST</span>
                 <span className="text-yellow-300">{Math.ceil(hud.damageBoostSeconds)}s</span>
+              </div>
+            )}
+            {hud.hotSpringSeconds > 0 && (
+              <div
+                data-testid="hot-spring-hud"
+                className="mt-1 px-1.5 py-0.5 bg-[#0f2e2b] border border-teal-400/75 font-pixel-mono text-[9px] font-bold text-teal-200 flex items-center justify-between"
+              >
+                <span>♨ ONSEN VITALITY +10% SPD</span>
+                <span className="text-teal-100">{Math.ceil(hud.hotSpringSeconds)}s</span>
               </div>
             )}
           </div>
@@ -204,142 +212,132 @@ export const GameHud: React.FC<GameHudProps> = ({
             </button>
           </div>
 
-          {/* Isekai Hub Quick-Action Strip when exploring Solaris Town / Guild / Shops */}
-          {inIsekaiHub && (
-            <div className="pointer-events-auto flex items-center flex-wrap gap-1 max-w-[380px]">
-              {hud.realm !== 'isekai_town' && (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-enter-town-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onEnterRoom('isekai_town');
-                  }}
-                  className="px-2 py-1 bg-[#1e3a8a]/90 hover:bg-[#1d4ed8] border border-sky-300 font-pixel-mono text-[9px] font-bold text-sky-50 cursor-pointer"
+          {/* In-Place Room & Proximity Actions (NO instant teleport buttons) */}
+          {hud.realm !== 'citadel' && (
+            <div className="pointer-events-auto flex flex-col gap-1 max-w-[390px]">
+              <div className="flex items-center flex-wrap gap-1">
+                {hud.realm === 'isekai_guild' && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-open-guild-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onOpenGuild();
+                    }}
+                    className="px-2.5 py-1 bg-[#7c2d12]/95 hover:bg-[#9a3412] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+                  >
+                    RECEPTION QUESTS
+                  </button>
+                )}
+                {hud.realm === 'isekai_potion_shop' && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-open-potion-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onOpenPotionShop();
+                    }}
+                    className="px-2.5 py-1 bg-[#065f46]/95 hover:bg-[#047857] border border-emerald-300 font-pixel-mono text-[9px] font-bold text-emerald-50 cursor-pointer"
+                  >
+                    BUY POTIONS
+                  </button>
+                )}
+                {hud.realm === 'isekai_wardrobe' && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-open-wardrobe-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onOpenWardrobe();
+                    }}
+                    className="px-2.5 py-1 bg-[#701a75]/95 hover:bg-[#86198f] border border-pink-300 font-pixel-mono text-[9px] font-bold text-pink-50 cursor-pointer"
+                  >
+                    SHOP CATALOG
+                  </button>
+                )}
+                {hud.realm === 'isekai_weapons_shop' && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-open-weapons-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onOpenWeaponsShop();
+                    }}
+                    className="px-2.5 py-1 bg-[#78350f]/95 hover:bg-[#92400e] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+                  >
+                    WEAPONS ARMORY
+                  </button>
+                )}
+                {(nearVanceInTown || nearCaravanExterior) && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-open-caravan-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onOpenCaravanRider();
+                    }}
+                    className="px-2.5 py-1 bg-[#78350f]/95 hover:bg-[#92400e] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+                  >
+                    CARAVAN VANCE [F]
+                  </button>
+                )}
+                {hud.realm === 'dueling_arena' && !hud.arenaDuel && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-open-arena-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onOpenDuelingArena();
+                    }}
+                    className="px-2.5 py-1 bg-[#581c87]/95 hover:bg-[#6b21a8] border border-purple-300 font-pixel-mono text-[9px] font-bold text-purple-50 cursor-pointer"
+                  >
+                    ⚔ CHOOSE JJK OPPONENT
+                  </button>
+                )}
+              </div>
+
+              {hud.acceptedMissionId &&
+                (hud.realm === 'dungeon_exterior' ||
+                  hud.realm === 'isekai_town' ||
+                  hud.realm.startsWith('isekai_') ||
+                  hud.realm === 'dueling_arena') && (
+                <div
+                  data-testid="accepted-contract-hud-pill"
+                  className="px-2 py-0.5 bg-[#112217]/92 border border-emerald-400/70 font-pixel-mono text-[9px] text-emerald-200"
                 >
-                  TOWN PLAZA
-                </button>
+                  {hud.realm === 'dungeon_exterior'
+                    ? 'Contract Active: Walk east into Rocky Dungeon Hole!'
+                    : 'Contract Active: Walk to Caravan Vance & type destination!'}
+                </div>
               )}
-              {hud.realm !== 'isekai_guild' ? (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-enter-guild-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onEnterRoom('isekai_guild');
-                  }}
-                  className="px-2 py-1 bg-[#7c2d12]/90 hover:bg-[#9a3412] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
+
+              {hud.realm === 'isekai_town' && (
+                <div
+                  data-testid="town-landmark-compass"
+                  className="bg-[#120b08]/90 border border-amber-500/45 px-2 py-1 flex items-center flex-wrap gap-1.5"
                 >
-                  ENTER GUILD
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-open-guild-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onOpenGuild();
-                  }}
-                  className="px-2 py-1 bg-[#7c2d12]/95 hover:bg-[#9a3412] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
-                >
-                  RECEPTION QUESTS
-                </button>
+                  {TOWN_LANDMARKS.map((lm) => {
+                    const dx = Math.round((lm.x - playerApproxX) / 16);
+                    const dir = Math.abs(dx) <= 2 ? 'HERE' : dx > 0 ? `${dx}m▶` : `◀${Math.abs(dx)}m`;
+                    return (
+                      <span
+                        key={lm.id}
+                        className={`font-pixel-mono text-[9px] ${
+                          Math.abs(dx) <= 2 ? 'text-yellow-300 font-bold' : 'text-amber-100/75'
+                        }`}
+                      >
+                        {lm.label}:{dir}
+                      </span>
+                    );
+                  })}
+                </div>
               )}
-              {hud.realm !== 'isekai_potion_shop' ? (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-enter-potion-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onEnterRoom('isekai_potion_shop');
-                  }}
-                  className="px-2 py-1 bg-[#065f46]/90 hover:bg-[#047857] border border-emerald-300 font-pixel-mono text-[9px] font-bold text-emerald-50 cursor-pointer"
-                >
-                  POTION SHOP
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-open-potion-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onOpenPotionShop();
-                  }}
-                  className="px-2 py-1 bg-[#065f46]/95 hover:bg-[#047857] border border-emerald-300 font-pixel-mono text-[9px] font-bold text-emerald-50 cursor-pointer"
-                >
-                  BUY POTIONS
-                </button>
-              )}
-              {hud.realm !== 'isekai_wardrobe' ? (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-enter-wardrobe-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onEnterRoom('isekai_wardrobe');
-                  }}
-                  className="px-2 py-1 bg-[#701a75]/90 hover:bg-[#86198f] border border-pink-300 font-pixel-mono text-[9px] font-bold text-pink-50 cursor-pointer"
-                >
-                  WARDROBE SHOP
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-open-wardrobe-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onOpenWardrobe();
-                  }}
-                  className="px-2 py-1 bg-[#701a75]/95 hover:bg-[#86198f] border border-pink-300 font-pixel-mono text-[9px] font-bold text-pink-50 cursor-pointer"
-                >
-                  SHOP CATALOG
-                </button>
-              )}
-              {hud.realm !== 'isekai_weapons_shop' ? (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-enter-weapons-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onEnterRoom('isekai_weapons_shop');
-                  }}
-                  className="px-2 py-1 bg-[#78350f]/90 hover:bg-[#92400e] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
-                >
-                  WEAPONS SHOP
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="hud-open-weapons-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onOpenWeaponsShop();
-                  }}
-                  className="px-2 py-1 bg-[#78350f]/95 hover:bg-[#92400e] border border-amber-300 font-pixel-mono text-[9px] font-bold text-amber-50 cursor-pointer"
-                >
-                  WEAPONS ARMORY
-                </button>
-              )}
-              <button
-                type="button"
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onReturnToCitadel();
-                }}
-                className="px-2 py-1 bg-[#1e1b4b]/90 hover:bg-[#312e81] border border-indigo-300/75 font-pixel-mono text-[9px] font-bold text-indigo-100 cursor-pointer"
-              >
-                CITADEL
-              </button>
             </div>
           )}
         </div>
@@ -379,6 +377,15 @@ export const GameHud: React.FC<GameHudProps> = ({
                 {hud.isekaiMission.objectiveText}
               </div>
 
+              {hud.endlessContractCleared && (hud.realm === 'goblin_dungeon' || hud.realm === 'demon_realm') && (
+                <div
+                  data-testid="endless-contract-cleared-banner"
+                  className="mt-1 px-2 py-0.5 bg-emerald-950 border border-emerald-400 font-pixel-mono text-[9px] font-bold text-emerald-200"
+                >
+                  ✓ Contract Cleared! Keep delving Deeper OR walk back to West Exit Rope!
+                </div>
+              )}
+
               {typeof hud.isekaiMission.carriageHp === 'number' && (
                 <div className="mt-1.5">
                   <div className="flex justify-between text-[9px] font-pixel-mono text-pink-200 mb-0.5">
@@ -400,10 +407,16 @@ export const GameHud: React.FC<GameHudProps> = ({
 
               {hud.isekaiMission.demonKings && (
                 <div className="mt-1.5 space-y-1">
+                  {hud.isekaiMission.currentDemonKingStage && (
+                    <div className="font-pixel-mono text-[9px] text-amber-300 font-bold">
+                      1-by-1 Citadel Stage {hud.isekaiMission.currentDemonKingStage}/3
+                    </div>
+                  )}
                   {hud.isekaiMission.demonKings.map((dk) => (
                     <div key={dk.id} className="text-[9px] font-pixel-mono">
                       <div className="flex justify-between text-purple-200 gap-1">
-                        <span className={dk.defeated ? 'line-through opacity-55' : 'font-bold truncate'}>
+                        <span className={dk.defeated ? 'line-through opacity-55' : dk.active ? 'font-bold text-yellow-200 truncate' : 'opacity-65 truncate'}>
+                          {dk.active && !dk.defeated ? '▶ ' : ''}
                           {dk.name}
                           {dk.windVulnerable ? ' [+30%]' : ''}
                           {dk.stunned ? ' [STUN]' : ''}
@@ -418,6 +431,21 @@ export const GameHud: React.FC<GameHudProps> = ({
                       </div>
                     </div>
                   ))}
+                  {hud.isekaiMission.alliedNpcs && hud.isekaiMission.alliedNpcs.length > 0 && (
+                    <div className="pt-1 border-t border-purple-500/30 grid grid-cols-3 gap-1">
+                      {hud.isekaiMission.alliedNpcs.map((ally) => (
+                        <div key={ally.id} className="text-[8px] font-pixel-mono text-sky-200">
+                          <div className="truncate">{ally.name.split(' ')[0]} {ally.hp > 0 ? `${ally.hp}` : 'KO'}</div>
+                          <div className="w-full h-1 bg-[#0b192e]">
+                            <div
+                              className="h-full bg-sky-400"
+                              style={{ width: `${Math.max(0, (ally.hp / Math.max(1, ally.maxHp)) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {/* Orb Bar for A-Rank Demon Kings Bossfight */}
                   <div
                     data-testid="boss-orb-bar"
@@ -459,6 +487,42 @@ export const GameHud: React.FC<GameHudProps> = ({
               {hud.isekaiMission.activeCastBanner && (
                 <div className="mt-1.5 px-2 py-0.5 bg-purple-950 border border-fuchsia-400 text-center font-pixel-mono text-[10px] font-bold text-fuchsia-200">
                   🔥 {hud.isekaiMission.activeCastBanner}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* JJK Colosseum Active Duel VS Panel */}
+          {hud.realm === 'dueling_arena' && hud.arenaDuel && (
+            <div
+              data-testid="arena-duel-hud"
+              className="bg-[#180a1c]/95 border-2 border-purple-400 px-4 py-2 min-w-[270px] max-w-[400px] shadow-[0_6px_20px_rgba(0,0,0,0.88)]"
+            >
+              <div className="flex items-center justify-between gap-2 text-[10px] font-pixel-mono">
+                <span className="text-amber-300 font-bold truncate">
+                  ⚔ {hud.arenaDuel.name} · {hud.arenaDuel.title}
+                </span>
+                <span className="text-purple-200 shrink-0">
+                  {hud.arenaDuel.hp}/{hud.arenaDuel.maxHp}
+                </span>
+              </div>
+              <div className="w-full h-2.5 bg-[#2a1230] border border-purple-400/50 mt-1">
+                <div
+                  className="h-full bg-fuchsia-500 transition-[width] duration-150"
+                  style={{
+                    width: `${Math.max(0, (hud.arenaDuel.hp / Math.max(1, hud.arenaDuel.maxHp)) * 100)}%`,
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2 text-[9px] font-pixel-mono text-cyan-200 mt-1">
+                <span>Matched ATK:{hud.arenaDuel.matchedAtk} · OP AI</span>
+                {hud.arenaDuel.aiActionTag && (
+                  <span className="text-yellow-300 font-bold">{hud.arenaDuel.aiActionTag}</span>
+                )}
+              </div>
+              {hud.arenaDuel.activeSkillBanner && (
+                <div className="mt-1 px-2 py-0.5 bg-purple-950 border border-fuchsia-300 text-center font-pixel-mono text-[10px] font-bold text-amber-200">
+                  ✦ {hud.arenaDuel.activeSkillBanner}
                 </div>
               )}
             </div>

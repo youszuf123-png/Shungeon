@@ -47,6 +47,9 @@ export type EnemyArchetype =
   | 'hobgoblin'
   | 'bandit_fighter'
   | 'bandit_archer'
+  | 'bandit_assassin'
+  | 'bandit_pyromancer'
+  | 'bandit_brute'
   | 'demon_succubus'
   | 'demon_tank'
   | 'demon_lightning';
@@ -216,7 +219,9 @@ export interface BossDef {
   climateSkyBottom: string;
   climateParticleColor: string;
   maxHp: number;
+  baseMaxHp?: number;
   difficultyMultiplier?: number;
+  defeatedScale?: number;
   primaryColor: string;
   secondaryColor: string;
   auraColor: string;
@@ -410,7 +415,17 @@ export interface Projectile {
     | 'arrow'
     | 'succubus_orb'
     | 'purple_flame'
-    | 'purple_meteor';
+    | 'purple_meteor'
+    | 'jjk_black_flash_orb'
+    | 'jjk_uzumaki'
+    | 'jjk_split_slash'
+    | 'jjk_pachinko_ball'
+    | 'jjk_lightning_bolt'
+    | 'jjk_transfig_orb'
+    | 'jjk_magma_meteor'
+    | 'jjk_piercing_blood'
+    | 'jjk_exec_blade'
+    | 'jjk_cursed_nail';
   spinPhase?: number;
   targetsCarriage?: boolean;
 }
@@ -692,13 +707,51 @@ export interface DemonKingEntity {
   defeated: boolean;
   stunTimer?: number;
   windVulnerable?: boolean;
+  damageMult?: number;
 }
 
 export type PurpleFlameKind =
   | 'violet_pillars'
   | 'purple_meteors'
   | 'abyssal_nova'
-  | 'shadow_crescent';
+  | 'shadow_crescent'
+  | 'rimuru_megiddo'
+  | 'rimuru_black_lightning'
+  | 'rimuru_beelzebuth'
+  | 'gs_gate_scroll'
+  | 'gs_shield_shock'
+  | 'gs_oil_bomb'
+  | 'bandit_firebomb'
+  | 'jjk_domain_void'
+  | 'jjk_domain_shrine'
+  | 'jjk_domain_chains'
+  | 'jjk_domain_swords'
+  | 'jjk_domain_shadow'
+  | 'jjk_domain_ratio'
+  | 'jjk_domain_station'
+  | 'jjk_domain_womb'
+  | 'jjk_domain_arsenal'
+  | 'jjk_domain_gamble'
+  | 'jjk_domain_amber'
+  | 'jjk_domain_perfection'
+  | 'jjk_domain_coffin'
+  | 'jjk_domain_blood'
+  | 'jjk_domain_court'
+  | 'jjk_domain_straw'
+  | 'jjk_hollow_purple'
+  | 'jjk_red_blue'
+  | 'jjk_cleave_storm'
+  | 'jjk_rika_beam'
+  | 'jjk_black_flash'
+  | 'jjk_uzumaki_vortex'
+  | 'jjk_split_soul_slash'
+  | 'jjk_jackpot_fever'
+  | 'jjk_kashimo_thunder'
+  | 'jjk_idle_transfig'
+  | 'jjk_jogo_volcano'
+  | 'jjk_piercing_blood'
+  | 'jjk_deadly_gavel'
+  | 'jjk_straw_resonance';
 
 export interface PurpleFlameZone {
   id: string;
@@ -711,6 +764,49 @@ export interface PurpleFlameZone {
   damage: number;
   kind: PurpleFlameKind;
   hasHit: boolean;
+  hitHouses?: boolean;
+}
+
+export type TownRaiderId = 'rimuru_tempest' | 'goblin_slayer';
+
+export interface TownHouseDamage {
+  index: number;
+  x: number;
+  w: number;
+  h: number;
+  hp: number;
+  maxHp: number;
+  broken: boolean;
+  hitFlash: number;
+}
+
+export interface ActiveTownRaid {
+  raiderId: TownRaiderId;
+  name: string;
+  title: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  w: number;
+  h: number;
+  hp: number;
+  maxHp: number;
+  attackDamage: number;
+  facing: 1 | -1;
+  onGround: boolean;
+  state: 'march' | 'windup' | 'attack' | 'aoe_cast' | 'recover';
+  stateTimer: number;
+  aoeCooldown: number;
+  attackCooldown: number;
+  castIndex: number;
+  targetHouseIdx: number | null;
+  hitFlash: number;
+  walkCycle: number;
+  activeSkillBanner: string | null;
+  activeSkillTimer: number;
+  stunTimer?: number;
+  windVulnerable?: boolean;
 }
 
 export interface CarriageEscortState {
@@ -759,26 +855,66 @@ export interface CoronationCutsceneHud {
 }
 
 export type ArenaChallengerId =
-  | 'sung_jin_ryu'
-  | 'lin_tianming'
-  | 'kurogane_kirito'
-  | 'yan_wuji'
-  | 'lord_shadow'
-  | 'bai_qingxue';
+  | 'satoru_gojo'
+  | 'ryomen_sukuna'
+  | 'toji_fushiguro'
+  | 'yuta_okkotsu'
+  | 'megumi_fushiguro'
+  | 'kento_nanami'
+  | 'yuji_itadori'
+  | 'suguru_geto'
+  | 'maki_zenin'
+  | 'kinji_hakari'
+  | 'hajime_kashimo'
+  | 'mahito'
+  | 'jogo'
+  | 'choso'
+  | 'hiromi_higuruma'
+  | 'nobara_kugisaki';
 
 export type ArenaWorldOrigin =
-  | 'Manhwa · Shadow Gate'
-  | 'Cultivation · Xianxia Sword Sect'
-  | 'Isekai Anime · Twin-Blade Aincrad'
-  | 'Manhua · Crimson Martial Palace'
-  | 'Isekai Manga · Shadow Garden'
-  | 'Wuxia · Glacial Nirvana Peak';
+  | 'Jujutsu Kaisen · Limitless'
+  | 'Jujutsu Kaisen · King of Curses'
+  | 'Jujutsu Kaisen · Sorcerer Killer'
+  | 'Jujutsu Kaisen · Special Grade'
+  | 'Jujutsu Kaisen · Ten Shadows'
+  | 'Jujutsu Kaisen · Grade 1 Tactician'
+  | 'Jujutsu Kaisen · Black Flash Vessel'
+  | 'Jujutsu Kaisen · Curse Manipulator'
+  | 'Jujutsu Kaisen · Heavenly Restriction'
+  | 'Jujutsu Kaisen · Restless Gambler'
+  | 'Jujutsu Kaisen · God of Lightning'
+  | 'Jujutsu Kaisen · Idle Transfiguration'
+  | 'Jujutsu Kaisen · Disaster Flame'
+  | 'Jujutsu Kaisen · Death Painting'
+  | 'Jujutsu Kaisen · Deadly Sentencing'
+  | 'Jujutsu Kaisen · Straw Doll';
 
 export interface ArenaSkillDef {
   id: string;
   name: string;
   damage: number;
-  kind: 'slash_barrage' | 'flying_swords' | 'dash_cleave' | 'crimson_wave' | 'atomic_nova' | 'frost_lotus';
+  kind:
+    | 'limitless_blue_red'
+    | 'hollow_purple'
+    | 'shrine_cleave'
+    | 'divine_flame_fuga'
+    | 'heavenly_blitz'
+    | 'inverted_spear'
+    | 'rika_manifest'
+    | 'cursed_speech'
+    | 'ten_shadows_summon'
+    | 'ratio_collapse'
+    | 'black_flash_rush'
+    | 'cursed_uzumaki'
+    | 'split_soul_katana'
+    | 'jackpot_pachinko'
+    | 'amber_lightning'
+    | 'idle_transfiguration'
+    | 'disaster_flames'
+    | 'blood_manipulation'
+    | 'deadly_sentencing'
+    | 'straw_doll_resonance';
   color: string;
   shout: string;
 }
@@ -813,17 +949,31 @@ export interface ActiveArenaDuel {
   h: number;
   hp: number;
   maxHp: number;
+  matchedAtk: number;
+  matchedSpeed: number;
   facing: 1 | -1;
-  state: 'idle' | 'approach' | 'windup' | 'attack' | 'recover';
+  onGround: boolean;
+  state: 'idle' | 'approach' | 'windup' | 'attack' | 'recover' | 'guard' | 'dodge';
   stateTimer: number;
+  attackCooldown: number;
   skillCooldown: number;
   skillIndex: number;
+  comboStep: number;
+  guardTimer: number;
+  dodgeCooldown: number;
+  invulnTimer: number;
   hitFlash: number;
   walkCycle: number;
+  aiActionTag: string | null;
   activeSkillBanner: string | null;
   activeSkillTimer: number;
   stunTimer: number;
   windVulnerable: boolean;
+  domainActive: boolean;
+  domainTimer: number;
+  domainCooldown: number;
+  domainName: string;
+  domainCastCount: number;
 }
 
 export interface DungeonChoicePending {
@@ -872,6 +1022,7 @@ export interface HudSnapshot {
   dungeonTarget: 'goblin_dungeon' | 'demon_realm' | 'demon_king_arena';
   dungeonDepth: number;
   dungeonChoicePending: DungeonChoicePending | null;
+  endlessContractCleared: boolean;
   activeGuildFloor: 1 | 2;
   damageBoostMultiplier: number;
   damageBoostSeconds: number;
@@ -885,7 +1036,23 @@ export interface HudSnapshot {
   isekaiPortalOpen: boolean;
   isekaiMission: IsekaiMissionHud | null;
   coronationCutscene: CoronationCutsceneHud | null;
+  caravanRide: {
+    destinationLabel: string;
+    progress: number;
+  } | null;
   arenaWins: number;
+  townRaid: {
+    raiderId: TownRaiderId;
+    name: string;
+    title: string;
+    hp: number;
+    maxHp: number;
+    attackDamage: number;
+    activeSkillBanner: string | null;
+    housesBroken: number;
+    totalHouses: number;
+  } | null;
+  secondsToTownRaid: number;
   arenaDuel: {
     challengerId: ArenaChallengerId;
     name: string;
@@ -894,8 +1061,16 @@ export interface HudSnapshot {
     weaponName: string;
     hp: number;
     maxHp: number;
+    matchedAtk: number;
+    matchedSpeed: number;
     activeSkillBanner: string | null;
+    aiActionTag: string | null;
     winsCount: number;
+    activeDomain: {
+      name: string;
+      challengerId: ArenaChallengerId;
+      secondsLeft: number;
+    } | null;
   } | null;
   onlineAdventurers: OnlineAdventurer[];
   pendingGuildInvites: GuildInvite[];
