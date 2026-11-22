@@ -473,15 +473,16 @@ export class BasteraGameEngine {
     if (this.rafId !== null) return;
     this.lastTime = performance.now();
     const tick = (now: number) => {
-      const rawDt = (now - this.lastTime) / 1000;
-      this.lastTime = now;
-      const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
-      if (!this.modalPaused && (this.status === 'playing' || this.status === 'title')) {
-        this.update(dt);
-        this.render();
-      }
-      this.rafId = requestAnimationFrame(tick);
-    };
+  const rawDt = (now - this.lastTime) / 1000;
+  this.lastTime = now;
+  const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
+  if (!this.modalPaused && (this.status === 'playing' || this.status === 'title')) {
+    this.update(dt);
+    this.render();
+  }
+  this.rafId = requestAnimationFrame(tick);
+};
+this.rafId = requestAnimationFrame(tick);
     this.rafId = requestAnimationFrame(tick);
   }
 
